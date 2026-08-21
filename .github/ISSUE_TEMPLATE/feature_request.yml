@@ -1,0 +1,49 @@
+name: Feature request
+description: Propose a new tool or a change to an existing one
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two things are deliberately out of scope and will be declined:
+
+        - `DELETE /v1/alerts/{id}` — destroys audit history with no undo.
+        - Alert **creation** — belongs to the integration API
+          (`/jsm/ops/integration/v2/alerts`) with an integration key, not to an
+          interactive agent.
+
+        If you have a concrete workflow that needs either, describe the workflow
+        below rather than the endpoint.
+
+  - type: textarea
+    id: workflow
+    attributes:
+      label: What are you trying to do?
+      description: >
+        The task an agent should be able to complete, not the endpoint you think
+        it needs. "Find out who to page for a P1 on the Payments team" is more
+        useful than "add GET /v1/teams".
+    validations:
+      required: true
+
+  - type: textarea
+    id: gap
+    attributes:
+      label: Why can't the existing tools do it?
+      description: What you tried, and where it fell short.
+    validations:
+      required: true
+
+  - type: input
+    id: endpoint
+    attributes:
+      label: Relevant API endpoint, if you know it
+      placeholder: GET /v1/...
+
+  - type: checkboxes
+    id: nature
+    attributes:
+      label: Would this change alert state?
+      options:
+        - label: No — this is read-only
+        - label: Yes — it acknowledges, closes, annotates, or reassigns

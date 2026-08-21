@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/rrvrs/jira-alerts-mcp/security/advisories/new
+    about: Report privately. Do not open a public issue.
+  - name: JSM Operations REST API reference
+    url: https://developer.atlassian.com/cloud/jira/service-desk-ops/rest/v2/intro/
+    about: Questions about the Atlassian API itself, rather than this server.

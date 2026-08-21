@@ -1,0 +1,91 @@
+name: Bug report
+description: Something in the server behaves differently than documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Redact before you post.** No cloud ids, API tokens, OAuth bearers, real
+        alert ids, alert messages, or on-call names. A token in a public issue is
+        a credential leak that needs rotating.
+
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Which tool?
+      options:
+        - jsm_list_alerts
+        - jsm_get_alert
+        - jsm_list_alert_notes
+        - jsm_list_alert_logs
+        - jsm_get_request_status
+        - jsm_acknowledge_alert
+        - jsm_close_alert
+        - jsm_add_alert_note
+        - jsm_add_alert_responder
+        - jsm_list_schedules
+        - jsm_get_on_call
+        - jsm_get_next_on_call
+        - Startup / configuration (server does not run)
+        - Other / not tool-specific
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you called, what came back, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Error output
+      description: The full message, with credentials and tenant data removed.
+      render: text
+
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport
+      options:
+        - stdio (default)
+        - http
+    validations:
+      required: true
+
+  - type: dropdown
+    id: auth
+    attributes:
+      label: Authentication method
+      options:
+        - JSM_EMAIL + JSM_API_TOKEN
+        - JSM_OAUTH_TOKEN
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: Output of `node -v`. The server requires Node 22 or newer.
+      placeholder: v22.11.0
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      placeholder: Claude Code 2.x / MCP Inspector / other
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: "`jsm_list_schedules` works, so auth and scopes are not the problem"
+        - label: I confirmed I passed the full alert id, not the short tinyId from the UI
+        - label: For a write tool — I checked `jsm_get_request_status` rather than re-reading the alert
