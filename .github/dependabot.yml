@@ -1,0 +1,37 @@
+# Dependency updates.
+#
+# Grouped deliberately: five separate patch-bump PRs a week is how people learn
+# to stop reading them. One grouped PR per ecosystem stays reviewable, and a
+# major version still arrives on its own because that is the one that breaks.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    groups:
+      # The SDK is the one dependency whose minor releases change behaviour we
+      # rely on, so it is not grouped with everything else.
+      mcp-sdk:
+        patterns: ['@modelcontextprotocol/*']
+      production:
+        dependency-type: production
+        exclude-patterns: ['@modelcontextprotocol/*']
+        update-types: [minor, patch]
+      development:
+        dependency-type: development
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, github-actions]
+    groups:
+      actions:
+        patterns: ['*']

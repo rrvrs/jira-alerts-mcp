@@ -54,9 +54,49 @@ expect(
   `server.json description is ${server.description?.length} characters; the schema allows 100`,
 );
 
+// --- Ruleset status checks vs the CI job matrix -----------------------------
+//
+// The `main` ruleset requires status checks by name, and those names come from
+// the CI job's `name:` expanded over its matrix. Rename the job and the ruleset
+// keeps waiting for checks that will never report — every PR blocks forever,
+// with nothing in the diff to explain it.
+
+const text = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+
+const ci = text(".github/workflows/ci.yml");
+const ruleset = read(".github/rulesets/main.json");
+
+const nameTemplate = ci.match(/^\s{4}name:\s*(.+)$/m)?.[1]?.trim();
+const matrixValues = ci
+  .match(/^\s*node:\s*\[([^\]]+)\]/m)?.[1]
+  .split(",")
+  .map((value) => value.trim().replace(/^['"]|['"]$/g, ""));
+
+if (!nameTemplate || !matrixValues) {
+  failures.push("could not read the CI job name or its node matrix from .github/workflows/ci.yml");
+} else {
+  const expected = matrixValues
+    .map((value) => nameTemplate.replace(/\$\{\{\s*matrix\.node\s*\}\}/, value))
+    .sort();
+
+  const required = (
+    ruleset.rules?.find((rule) => rule.type === "required_status_checks")?.parameters
+      ?.required_status_checks ?? []
+  )
+    .map((check) => check.context)
+    .sort();
+
+  expect(
+    JSON.stringify(expected) === JSON.stringify(required),
+    `ruleset required checks [${required.join(", ")}] do not match the CI jobs [${expected.join(", ")}] — ` +
+      "a PR gated on a check that never reports can never merge",
+  );
+}
+
 if (failures.length) {
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(1);
 }
 
 console.log(`✓ package.json and server.json agree — ${server.name}@${server.version}`);
+console.log(`✓ ruleset requires exactly the checks CI produces`);
