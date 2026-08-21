@@ -8,11 +8,17 @@ An MCP server for the **Jira Service Management Operations** REST API — alerts
 
 ## Why this exists
 
-Every other Jira MCP server talks to Jira *work items*. Alerts are not work items. They live behind a different API (`/jsm/ops/api`, the rehosted Opsgenie surface) with its own scopes, its own id format, and its own asynchronous write semantics — and nothing reaches it.
+**Alerts are not work items.** They live behind a different API — `/jsm/ops/api`, the rehosted Opsgenie surface — with its own scopes, its own id format, and its own asynchronous write semantics. The MCP Registry lists 30 Jira servers; every one of them talks to work items. None of them can tell you what is paging you right now.
 
-The Atlassian Rovo connector doesn't close the gap either: it grants `read:jira-work` and Confluence read scopes, which cannot touch `/jsm/ops/api` at all. So an agent connected to Jira can read your tickets and still have no idea what is paging you right now.
+**The official Atlassian MCP server doesn't close the gap.** [`atlassian/atlassian-mcp-server`](https://github.com/atlassian/atlassian-mcp-server) covers Jira, Confluence, Jira Service Management *requests*, Bitbucket, Compass and the Teamwork Graph. It has no tool for alerts, schedules or on-call. It is also a hosted, closed server — the repository holds manifests and skills, not handlers — so that gap is Atlassian's to close, not something a contribution can fix.
 
-This server covers that surface: search alerts, read their notes and activity timeline, acknowledge / close / annotate / add responders, and look up who is on call now and next.
+**The Opsgenie MCP servers that do exist speak an API with an end date.** [giantswarm/mcp-opsgenie](https://github.com/giantswarm/mcp-opsgenie), [burakdirin/opsgenie-mcp-server](https://github.com/burakdirin/opsgenie-mcp-server) and [daviddykeuk/opsgenie-mcp](https://github.com/daviddykeuk/opsgenie-mcp) all call `api.opsgenie.com` with a GenieKey. Opsgenie [reached end-of-sale on 4 June 2025 and shuts down on 5 April 2027](https://community.atlassian.com/forums/Opsgenie-Migration-articles/The-Evolution-of-IT-Operations-Opsgenie-s-Transition-into/ba-p/2968088), at which point those REST APIs stop responding. The functionality moved into Jira Service Management.
+
+This server targets the surface that replaces them: `api.atlassian.com/jsm/ops/api/{cloudId}` with OAuth or an Atlassian API token. Search alerts, read their notes and activity timeline, acknowledge / close / annotate / add responders, and look up who is on call now and next.
+
+## Compatibility
+
+For **Atlassian Cloud tenants with JSM Operations** — that is, sites already migrated off standalone Opsgenie, or provisioned after the merge. If your team still logs in at `app.opsgenie.com` and authenticates with a GenieKey, this server will not reach your data; one of the Opsgenie servers above will, until 2027.
 
 Base URL: `https://api.atlassian.com/jsm/ops/api/{cloudId}/v1`
 

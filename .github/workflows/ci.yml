@@ -43,6 +43,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Verify package.json and server.json agree
+        run: node scripts/check-manifests.mjs
+
       - name: Verify tests are excluded from the published build
         run: |
           leaked=$(find dist \( -name '*.test.js' -o -name '*.test.d.ts' -o -name 'test-support.*' \))

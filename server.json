@@ -1,0 +1,50 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.rrvrs/jira-alerts-mcp",
+  "title": "Jira Alerts (JSM Operations)",
+  "description": "MCP server for Jira Service Management Operations — alerts, on-call schedules and responders",
+  "version": "1.0.0",
+  "websiteUrl": "https://github.com/rrvrs/jira-alerts-mcp#readme",
+  "repository": {
+    "url": "https://github.com/rrvrs/jira-alerts-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "jira-alerts-mcp",
+      "version": "1.0.0",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "JSM_CLOUD_ID",
+          "description": "Atlassian site cloud id (a UUID). Find it at https://<your-site>.atlassian.net/_edgeAuth/tenantInfo",
+          "isRequired": true,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "JSM_EMAIL",
+          "description": "Atlassian account email, for API token auth. Required unless JSM_OAUTH_TOKEN is set.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "JSM_API_TOKEN",
+          "description": "Atlassian account API token, paired with JSM_EMAIL. Required unless JSM_OAUTH_TOKEN is set.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "JSM_OAUTH_TOKEN",
+          "description": "OAuth 3LO or Forge bearer token. Takes precedence over JSM_EMAIL and JSM_API_TOKEN.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
