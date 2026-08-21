@@ -1,0 +1,6 @@
+# Requests a review automatically on every incoming pull request.
+#
+# CODEOWNERS review is not *required* by the main ruleset — requiring it on a
+# single-owner repo would mean every PR needs a bypass. This just makes sure
+# nothing sits unnoticed.
+* @rrvrs

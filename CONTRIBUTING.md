@@ -92,3 +92,36 @@ Registry, which stores metadata pointing at the npm package. `package.json` and
 `server.json` have to agree on name and version or the registry rejects the
 listing; `npm run check:manifests` asserts that and CI runs it on every push.
 The full sequence is in [RELEASING.md](RELEASING.md).
+
+## Repository setup
+
+Maintainers only. The GitHub settings that no commit can set — the About box,
+merge behaviour, private vulnerability reporting and the `main` ruleset — live
+in [`scripts/setup-repo.sh`](scripts/setup-repo.sh), with the ruleset itself
+versioned as [`.github/rulesets/main.json`](.github/rulesets/main.json) so it
+shows up in a diff rather than only in a settings page.
+
+```bash
+scripts/setup-repo.sh --dry-run   # prints every call, changes nothing
+scripts/setup-repo.sh             # needs gh, and admin rights on the repo
+```
+
+What the ruleset enforces on `main`: no deletion, no force-push, squash merges
+only, and a pull request that has one approval, resolved review threads, and
+green CI on **both** Node versions.
+
+Two things about it are easy to get wrong.
+
+**Admins are not exempt from a ruleset by default.** This is where rulesets
+differ from classic branch protection. With one required approval and a single
+maintainer, an admin without a bypass cannot merge their own PR by any route.
+The ruleset therefore lists the repository admin role in `bypass_actors`. The
+rule is still fully enforced for outside contributors, which is its purpose.
+When a second maintainer joins, delete that array.
+
+**The required checks are named after the CI job.** They are `Node 22` and
+`Node 24`, produced by `name: Node ${{ matrix.node }}` expanding over the
+matrix in [`ci.yml`](.github/workflows/ci.yml). Rename that job and the ruleset
+waits forever on checks that no longer report — every PR blocks, and nothing in
+the diff explains why. `npm run check:manifests` compares the two and fails on
+a mismatch, so change them together.

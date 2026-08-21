@@ -1,0 +1,18 @@
+# Grouping for GitHub's auto-generated release notes.
+# Labels come from the PR, so a PR with no label lands in "Other changes".
+changelog:
+  exclude:
+    labels: [ignore-for-release]
+  categories:
+    - title: New tools and features
+      labels: [enhancement, feature]
+    - title: Fixes
+      labels: [bug]
+    - title: Security
+      labels: [security]
+    - title: Documentation
+      labels: [documentation]
+    - title: Dependencies
+      labels: [dependencies]
+    - title: Other changes
+      labels: ['*']
