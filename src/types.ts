@@ -135,11 +135,22 @@ export interface Paged<T> {
 
 /** Standard pagination metadata attached to every list tool response. */
 export interface PaginationMeta {
+  /**
+   * How many records are actually in this response. When the page was trimmed
+   * to fit the character limit this is smaller than the API returned, and
+   * `truncated` is set.
+   */
   count: number;
   offset?: number;
   has_more: boolean;
+  /**
+   * Where to resume. Always `offset + count`, never `offset + limit`, so a
+   * caller that follows it cannot skip records that were trimmed away.
+   */
   next_offset?: number;
   /** Opaque cursor when the API returns a `next` link instead of an offset. */
   next_cursor?: string;
+  /** Set when the response holds fewer records than the API returned. */
+  truncated?: boolean;
   total?: number;
 }

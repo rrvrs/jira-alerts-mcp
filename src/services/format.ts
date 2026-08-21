@@ -70,23 +70,67 @@ export function withCharacterLimit<T>(
   return { text, truncated: false, kept };
 }
 
-/** Builds the standard pagination block returned by every list tool. */
-export function buildPagination(
-  count: number,
-  limit: number,
-  offset?: number,
-  totalCount?: number,
-  nextCursor?: string,
-): PaginationMeta {
-  const hasMore = nextCursor ? true : count === limit;
+export interface PaginationInput {
+  /** Records actually included in the response, after any truncation. */
+  returned: number;
+  /** Records the API returned for this page, before truncation. */
+  fetched: number;
+  limit: number;
+  offset?: number;
+  totalCount?: number;
+  nextCursor?: string;
+}
+
+/**
+ * Builds the standard pagination block returned by every list tool.
+ *
+ * Takes `returned` and `fetched` separately on purpose. Reporting the fetched
+ * count while shipping the truncated list would make `next_offset` skip past
+ * every record that truncation dropped, losing them silently — so `count` and
+ * `next_offset` are both derived from what the caller actually received.
+ */
+export function buildPagination({
+  returned,
+  fetched,
+  limit,
+  offset,
+  totalCount,
+  nextCursor,
+}: PaginationInput): PaginationMeta {
+  const truncated = returned < fetched;
+  // A full page means the API probably has more. So does a truncated one — by
+  // definition we are holding back records the API already handed us.
+  const hasMore = nextCursor ? true : truncated || fetched === limit;
+
   return {
-    count,
+    count: returned,
     ...(offset !== undefined ? { offset } : {}),
     has_more: hasMore,
-    ...(hasMore && offset !== undefined ? { next_offset: offset + count } : {}),
+    ...(hasMore && offset !== undefined ? { next_offset: offset + returned } : {}),
     ...(nextCursor ? { next_cursor: nextCursor } : {}),
+    ...(truncated ? { truncated: true } : {}),
     ...(totalCount !== undefined ? { total: totalCount } : {}),
   };
+}
+
+/**
+ * Result envelope for a list tool that found nothing.
+ *
+ * Exists because `ok(text)` alone is a trap: every list tool declares an
+ * outputSchema, and the SDK rejects a non-error result that carries no
+ * structuredContent. An empty page is an ordinary answer, not an error, so it
+ * has to ship a valid — but empty — structured payload.
+ */
+export function emptyResult(
+  text: string,
+  key: string,
+  limit: number,
+  offset?: number,
+): ToolResult {
+  return ok(text, {
+    [key]: [],
+    pagination: buildPagination({ returned: 0, fetched: 0, limit, offset }),
+  });
 }
 
 function timestamp(value?: string): string {

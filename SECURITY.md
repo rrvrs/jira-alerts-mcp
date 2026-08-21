@@ -24,7 +24,14 @@ With `write:ops-alert:jira-service-management`, the server can acknowledge, clos
 
 - **Give it its own account.** Prefer a dedicated service account with the minimum Operations access needed, over a human's personal token.
 - **Read-only is a supported configuration.** Grant only `read:ops-alert:jira-service-management` and the four write tools will fail with a 403 that says exactly which scope is missing. If the agent doesn't need to change alert state, don't give it the scope.
-- **The HTTP transport binds to loopback by default** (`127.0.0.1:3000`) precisely because this process holds credentials. It performs **no authentication of its own** — anyone who can reach the port can drive every tool with your credentials. Setting `HOST=0.0.0.0` exposes it to the network; if you need that, put an authenticating reverse proxy in front of it. For normal use with an MCP client, prefer the default stdio transport.
+- **The HTTP transport performs no authentication of its own.** Anyone who can reach the port can drive every tool with your credentials. For normal use with an MCP client, prefer the default stdio transport.
+- **Loopback binding is not, on its own, a security boundary.** Binding to `127.0.0.1` stops other machines reaching the port, but it does not stop a web page in your own browser from POSTing to it — that is what DNS rebinding is. The server therefore validates the `Host` header on every request (via the SDK's `createMcpExpressApp`), which is the control that actually blocks the attack. If you bind beyond loopback with `HOST`, you **must** also set `ALLOWED_HOSTS` to the hostnames you expect, or that protection is not applied:
+
+  ```bash
+  HOST=0.0.0.0 ALLOWED_HOSTS=mcp.internal.example.com node dist/index.js
+  ```
+
+  Binding wide is still not sufficient on its own — put an authenticating reverse proxy in front of it.
 - **Credentials come from the environment, never from a file the server reads.** There is no `dotenv` dependency and `.env` is gitignored. `.env.example` contains placeholders only.
 - **Alert content is untrusted input.** Alert messages, descriptions and notes are written by whatever integration fired them and are rendered into the model's context. Text inside an alert is data, not instructions — an agent acting on alerts should treat it that way.
 
