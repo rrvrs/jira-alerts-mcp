@@ -84,3 +84,11 @@ If you have a concrete need for either, open an issue describing the workflow be
 - Say what you verified and how. "Ran `jsm_list_schedules` against a test tenant" is worth more than "should work".
 - New API behaviour needs a test, or an explanation of why it isn't testable offline.
 - By contributing you agree your work is licensed under [Apache-2.0](LICENSE).
+
+## Releasing
+
+Maintainers only, and it is a two-step publish — npm first, then the MCP
+Registry, which stores metadata pointing at the npm package. `package.json` and
+`server.json` have to agree on name and version or the registry rejects the
+listing; `npm run check:manifests` asserts that and CI runs it on every push.
+The full sequence is in [RELEASING.md](RELEASING.md).
