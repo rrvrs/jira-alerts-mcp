@@ -12,7 +12,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import express from "express";
+import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
+import type { NextFunction, Request, Response } from "express";
 
 import { SERVER_NAME, SERVER_VERSION } from "./constants.js";
 import { JsmClient, JsmConfigError, loadConfig } from "./services/client.js";
@@ -39,14 +40,29 @@ async function runStdio(client: JsmClient): Promise<void> {
 }
 
 async function runHttp(client: JsmClient): Promise<void> {
-  const app = express();
-  app.use(express.json());
+  const port = Number.parseInt(process.env.PORT ?? "3000", 10);
+  // Bind to loopback by default: this server holds credentials and should not
+  // be exposed on all interfaces without a deliberate decision.
+  const host = process.env.HOST ?? "127.0.0.1";
+  const allowedHosts = process.env.ALLOWED_HOSTS?.split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  // createMcpExpressApp installs Host-header validation as well as
+  // express.json(). Binding to loopback is NOT sufficient on its own: without
+  // this check any web page the user visits can POST to 127.0.0.1 and drive
+  // every tool with our Atlassian credentials (DNS rebinding). The SDK warns
+  // on the console if you bind wide without setting ALLOWED_HOSTS.
+  const app = createMcpExpressApp({
+    host,
+    ...(allowedHosts?.length ? { allowedHosts } : {}),
+  });
 
   app.get("/health", (_req, res) => {
     res.json({ status: "ok", server: SERVER_NAME, version: SERVER_VERSION });
   });
 
-  app.post("/mcp", async (req, res) => {
+  app.post("/mcp", async (req, res, next) => {
     // A fresh stateless transport per request avoids request-id collisions
     // between concurrent clients.
     const server = buildServer(client);
@@ -60,14 +76,48 @@ async function runHttp(client: JsmClient): Promise<void> {
       void server.close();
     });
 
-    await server.connect(transport);
-    await transport.handleRequest(req, res, req.body);
+    try {
+      await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+    } catch (error) {
+      // Express 4 does not catch rejections from async handlers. Without this,
+      // one bad request becomes an unhandled rejection, which Node treats as
+      // fatal — taking down every other client's connection with it.
+      void transport.close();
+      void server.close();
+      next(error);
+    }
   });
 
-  const port = Number.parseInt(process.env.PORT ?? "3000", 10);
-  // Bind to loopback by default: this server holds credentials and should not
-  // be exposed on all interfaces without a deliberate decision.
-  const host = process.env.HOST ?? "127.0.0.1";
+  // Stateless mode supports POST only. Say so, rather than letting Express
+  // return its default 404 HTML to a client probing for an SSE stream.
+  app.all("/mcp", (_req, res) => {
+    res.status(405).set("Allow", "POST").json({
+      jsonrpc: "2.0",
+      error: { code: -32000, message: "Method not allowed. This endpoint accepts POST only." },
+      id: null,
+    });
+  });
+
+  app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
+    console.error("Request failed:", error.message);
+    if (res.headersSent) return;
+
+    // body-parser rejects a malformed body with an http-errors 400. That is the
+    // client's mistake, not ours, and -32700 is the JSON-RPC code for it.
+    const status = (error as { status?: number; statusCode?: number }).status ??
+      (error as { statusCode?: number }).statusCode ??
+      500;
+    const isClientError = status >= 400 && status < 500;
+
+    res.status(isClientError ? status : 500).json({
+      jsonrpc: "2.0",
+      error: isClientError
+        ? { code: -32700, message: "Parse error: request body is not valid JSON" }
+        : { code: -32603, message: "Internal server error" },
+      id: null,
+    });
+  });
 
   app.listen(port, host, () => {
     console.error(`${SERVER_NAME} v${SERVER_VERSION} listening on http://${host}:${port}/mcp`);
@@ -89,6 +139,8 @@ async function main(): Promise<void> {
         "  JSM_OAUTH_TOKEN OAuth 3LO bearer token (alternative to email + token)",
         "  TRANSPORT       'stdio' (default) or 'http'",
         "  PORT / HOST     HTTP transport bind settings (default 127.0.0.1:3000)",
+        "  ALLOWED_HOSTS   Comma-separated Host allowlist for the HTTP transport;",
+        "                  required when binding beyond loopback",
       ].join("\n"),
     );
     return;

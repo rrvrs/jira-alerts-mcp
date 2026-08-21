@@ -15,6 +15,7 @@ import { ResponseFormat } from "../schemas/common.js";
 import type { Alert, AlertLog, AlertNote, OnCallData, Schedule } from "../types.js";
 import {
   buildPagination,
+  emptyResult,
   fail,
   ok,
   renderAlertDetail,
@@ -111,7 +112,7 @@ describe("withCharacterLimit", () => {
 
 describe("buildPagination", () => {
   it("reports has_more when the page came back full", () => {
-    assert.deepEqual(buildPagination(20, 20, 0), {
+    assert.deepEqual(buildPagination({ returned: 20, fetched: 20, limit: 20, offset: 0 }), {
       count: 20,
       offset: 0,
       has_more: true,
@@ -120,28 +121,73 @@ describe("buildPagination", () => {
   });
 
   it("reports no more when the page came back short", () => {
-    assert.deepEqual(buildPagination(7, 20, 40), {
+    assert.deepEqual(buildPagination({ returned: 7, fetched: 7, limit: 20, offset: 40 }), {
       count: 7,
       offset: 40,
       has_more: false,
     });
   });
 
+  it("counts what was returned, not what the API sent", () => {
+    // The whole point: reporting `fetched` here would make next_offset skip
+    // every record truncation dropped.
+    const meta = buildPagination({ returned: 25, fetched: 100, limit: 100, offset: 0 });
+    assert.equal(meta.count, 25);
+    assert.equal(meta.truncated, true);
+    assert.equal(meta.has_more, true);
+    assert.equal(meta.next_offset, 25);
+  });
+
+  it("resumes at the first record the caller did not receive", () => {
+    const meta = buildPagination({ returned: 10, fetched: 50, limit: 50, offset: 200 });
+    assert.equal(meta.next_offset, 210);
+  });
+
+  it("treats truncation as proof of more results even on a short page", () => {
+    const meta = buildPagination({ returned: 2, fetched: 7, limit: 20, offset: 0 });
+    assert.equal(meta.has_more, true);
+    assert.equal(meta.truncated, true);
+  });
+
+  it("omits the truncated flag when nothing was dropped", () => {
+    assert.equal("truncated" in buildPagination({ returned: 5, fetched: 5, limit: 20 }), false);
+  });
+
   it("omits offset and next_offset for cursor-paged endpoints", () => {
-    const meta = buildPagination(20, 20, undefined, undefined, "cursor-abc");
+    const meta = buildPagination({ returned: 20, fetched: 20, limit: 20, nextCursor: "cursor-abc" });
     assert.equal("offset" in meta, false);
     assert.equal("next_offset" in meta, false);
     assert.equal(meta.next_cursor, "cursor-abc");
   });
 
   it("treats a cursor as proof of more results even on a short page", () => {
-    const meta = buildPagination(3, 20, undefined, undefined, "cursor-abc");
+    const meta = buildPagination({ returned: 3, fetched: 3, limit: 20, nextCursor: "cursor-abc" });
     assert.equal(meta.has_more, true);
   });
 
   it("passes through totalCount only when supplied", () => {
-    assert.equal(buildPagination(5, 20, 0, 137).total, 137);
-    assert.equal("total" in buildPagination(5, 20, 0), false);
+    assert.equal(
+      buildPagination({ returned: 5, fetched: 5, limit: 20, offset: 0, totalCount: 137 }).total,
+      137,
+    );
+    assert.equal("total" in buildPagination({ returned: 5, fetched: 5, limit: 20, offset: 0 }), false);
+  });
+});
+
+describe("emptyResult", () => {
+  it("ships a valid structured payload, because outputSchema demands one", () => {
+    // ok(text) alone here is what made an empty search return -32602.
+    const result = emptyResult("No alerts matched.", "alerts", 20, 0);
+    assert.deepEqual(result.structuredContent?.alerts, []);
+    assert.equal(result.isError, undefined);
+  });
+
+  it("reports an empty page as the end of the results", () => {
+    const meta = emptyResult("none", "schedules", 20, 0).structuredContent
+      ?.pagination as Record<string, unknown>;
+    assert.equal(meta.count, 0);
+    assert.equal(meta.has_more, false);
+    assert.equal("next_offset" in meta, false);
   });
 });
 

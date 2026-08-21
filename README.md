@@ -73,6 +73,7 @@ Copy [`.env.example`](.env.example) for reference. Note that the server does **n
 | `JSM_OAUTH_TOKEN` | one of | OAuth 3LO bearer; takes precedence if set |
 | `TRANSPORT` | no | `stdio` (default) or `http` |
 | `PORT` / `HOST` | no | HTTP transport; defaults to `127.0.0.1:3000` |
+| `ALLOWED_HOSTS` | no | Comma-separated `Host` allowlist. Required if you set `HOST` beyond loopback — see [SECURITY.md](SECURITY.md) |
 
 Credentials are validated at startup, so a bad config fails immediately with an actionable message rather than on the first tool call.
 

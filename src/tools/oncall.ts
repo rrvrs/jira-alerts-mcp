@@ -7,15 +7,14 @@ import { z } from "zod";
 import { JsmClient, handleApiError } from "../services/client.js";
 import {
   buildPagination,
+  emptyResult,
   fail,
-  ok,
   renderFormat,
   renderOnCall,
   renderSchedules,
   withCharacterLimit,
 } from "../services/format.js";
 import {
-  ResponseFormat,
   limitField,
   offsetField,
   responseFormatField,
@@ -105,8 +104,11 @@ Examples:
         });
 
         if (!page.items.length) {
-          return ok(
+          return emptyResult(
             "No on-call schedules found. Schedules live on a team's Operations page in JSM — if you expect some, confirm the credentials can see that team.",
+            "schedules",
+            params.limit,
+            params.offset,
           );
         }
 
@@ -118,17 +120,16 @@ Examples:
 
         const structured = {
           schedules: page.items.slice(0, rendered.kept),
-          pagination: buildPagination(
-            page.items.length,
-            params.limit,
-            params.offset,
-            page.totalCount,
-          ),
+          pagination: buildPagination({
+            returned: rendered.kept,
+            fetched: page.items.length,
+            limit: params.limit,
+            offset: params.offset,
+            totalCount: page.totalCount,
+          }),
         };
 
-        return params.response_format === ResponseFormat.JSON
-          ? renderFormat(ResponseFormat.JSON, rendered.text, structured)
-          : ok(rendered.text, structured);
+        return renderFormat(params.response_format, rendered.text, structured);
       } catch (error) {
         return fail(handleApiError(error, "list schedules"));
       }

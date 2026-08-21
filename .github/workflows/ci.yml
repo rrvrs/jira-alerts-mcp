@@ -45,7 +45,7 @@ jobs:
 
       - name: Verify tests are excluded from the published build
         run: |
-          leaked=$(find dist -name '*.test.js' -o -name '*.test.d.ts')
+          leaked=$(find dist \( -name '*.test.js' -o -name '*.test.d.ts' -o -name 'test-support.*' \))
           if [ -n "$leaked" ]; then
             echo "::error::test files leaked into dist/ — check the tsconfig exclude"
             echo "$leaked"

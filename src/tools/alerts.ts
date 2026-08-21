@@ -8,8 +8,8 @@ import { MAX_ALERT_WINDOW } from "../constants.js";
 import { JsmClient, handleApiError } from "../services/client.js";
 import {
   buildPagination,
+  emptyResult,
   fail,
-  ok,
   renderAlertDetail,
   renderAlertLine,
   renderFormat,
@@ -18,7 +18,6 @@ import {
   withCharacterLimit,
 } from "../services/format.js";
 import {
-  ResponseFormat,
   alertIdField,
   limitField,
   offsetField,
@@ -226,10 +225,13 @@ Constraints and errors:
         });
 
         if (!page.items.length) {
-          return ok(
+          return emptyResult(
             params.query
               ? `No alerts matched '${params.query}'. Try relaxing the query — note that field names are case-sensitive and closed alerts are excluded only if you asked for status:open.`
               : "No alerts found on this site.",
+            "alerts",
+            params.limit,
+            params.offset,
           );
         }
 
@@ -248,17 +250,16 @@ Constraints and errors:
 
         const structured = {
           alerts: page.items.slice(0, rendered.kept),
-          pagination: buildPagination(
-            page.items.length,
-            params.limit,
-            params.offset,
-            page.totalCount,
-          ),
+          pagination: buildPagination({
+            returned: rendered.kept,
+            fetched: page.items.length,
+            limit: params.limit,
+            offset: params.offset,
+            totalCount: page.totalCount,
+          }),
         };
 
-        return params.response_format === ResponseFormat.JSON
-          ? renderFormat(ResponseFormat.JSON, rendered.text, structured)
-          : ok(rendered.text, structured);
+        return renderFormat(params.response_format, rendered.text, structured);
       } catch (error) {
         return fail(handleApiError(error, "list alerts"));
       }
@@ -370,13 +371,13 @@ Note: these endpoints page with opaque cursors, not numeric offsets — pass nex
 
         const structured = {
           notes: page.items.slice(0, rendered.kept),
-          pagination: buildPagination(
-            page.items.length,
-            params.limit,
-            undefined,
-            page.totalCount,
-            page.paging?.next,
-          ),
+          pagination: buildPagination({
+            returned: rendered.kept,
+            fetched: page.items.length,
+            limit: params.limit,
+            totalCount: page.totalCount,
+            nextCursor: page.paging?.next,
+          }),
         };
 
         return renderFormat(params.response_format, rendered.text, structured);
@@ -437,13 +438,13 @@ Examples:
 
         const structured = {
           logs: page.items.slice(0, rendered.kept),
-          pagination: buildPagination(
-            page.items.length,
-            params.limit,
-            undefined,
-            page.totalCount,
-            page.paging?.next,
-          ),
+          pagination: buildPagination({
+            returned: rendered.kept,
+            fetched: page.items.length,
+            limit: params.limit,
+            totalCount: page.totalCount,
+            nextCursor: page.paging?.next,
+          }),
         };
 
         return renderFormat(params.response_format, rendered.text, structured);
