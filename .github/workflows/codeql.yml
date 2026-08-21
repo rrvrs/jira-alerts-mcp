@@ -25,7 +25,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 'javascript-typescript' covers both languages; TypeScript is analysed by
       # the JavaScript extractor. build-mode 'none' is what interpreted
