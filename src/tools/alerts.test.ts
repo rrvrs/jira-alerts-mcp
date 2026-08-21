@@ -9,33 +9,10 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-
 import { MAX_ALERT_WINDOW } from "../constants.js";
-import type { JsmClient } from "../services/client.js";
-import type { ToolResult } from "../services/format.js";
 import type { Alert } from "../types.js";
-import { registerAlertReadTools } from "./alerts.js";
+import { alertReadTools } from "./alerts/index.js";
 import { callTool, connectTools, stubClient, textOf } from "./test-support.js";
-
-type Handler = (params: Record<string, unknown>) => Promise<ToolResult>;
-
-/**
- * Captures handlers without a transport. Only for assertions about what a tool
- * does *before* it would reach the API — anything about the returned result
- * must go through connectTools instead, or schema violations slip through.
- */
-function captureHandlers(client: JsmClient): Map<string, Handler> {
-  const handlers = new Map<string, Handler>();
-  const stub = {
-    registerTool(name: string, _config: unknown, handler: Handler) {
-      handlers.set(name, handler);
-      return {};
-    },
-  };
-  registerAlertReadTools(stub as unknown as McpServer, client);
-  return handlers;
-}
 
 function alertFixture(index: number, padding = ""): Alert {
   return {
@@ -51,15 +28,11 @@ function alertFixture(index: number, padding = ""): Alert {
 describe("jsm_list_alerts window guard", () => {
   it("rejects paging past the API's 20,000-record window without issuing a request", async () => {
     const { client, calls } = stubClient();
-    const listAlerts = captureHandlers(client).get("jsm_list_alerts");
-    assert.ok(listAlerts, "jsm_list_alerts should be registered");
+    const mcp = await connectTools(alertReadTools, client);
 
-    const result = await listAlerts({
+    const result = await callTool(mcp, "jsm_list_alerts", {
       offset: MAX_ALERT_WINDOW,
       limit: 20,
-      sort: "createdAt",
-      order: "desc",
-      response_format: "markdown",
     });
 
     assert.equal(result.isError, true);
@@ -70,7 +43,7 @@ describe("jsm_list_alerts window guard", () => {
 
   it("tells the model to narrow the query rather than to page differently", async () => {
     const { client } = stubClient();
-    const mcp = await connectTools(registerAlertReadTools, client);
+    const mcp = await connectTools(alertReadTools, client);
     const result = await callTool(mcp, "jsm_list_alerts", { offset: 19_950, limit: 100 });
 
     assert.equal(result.isError, true);
@@ -79,7 +52,7 @@ describe("jsm_list_alerts window guard", () => {
 
   it("allows a request that lands exactly on the window boundary", async () => {
     const { client, calls } = stubClient({ items: [alertFixture(1)] });
-    const mcp = await connectTools(registerAlertReadTools, client);
+    const mcp = await connectTools(alertReadTools, client);
 
     const result = await callTool(mcp, "jsm_list_alerts", {
       offset: MAX_ALERT_WINDOW - 20,
@@ -92,7 +65,7 @@ describe("jsm_list_alerts window guard", () => {
 
   it("passes the search arguments through to the alerts endpoint", async () => {
     const { client, calls } = stubClient({ items: [alertFixture(1)] });
-    const mcp = await connectTools(registerAlertReadTools, client);
+    const mcp = await connectTools(alertReadTools, client);
 
     await callTool(mcp, "jsm_list_alerts", { query: "status:open", limit: 50, offset: 10 });
 
@@ -109,7 +82,7 @@ describe("empty result sets", () => {
   // empty branch turned "no alerts matched" into a protocol error.
   it("returns the search hint, not a schema error, when nothing matches", async () => {
     const { client } = stubClient({ items: [] });
-    const mcp = await connectTools(registerAlertReadTools, client);
+    const mcp = await connectTools(alertReadTools, client);
     const result = await callTool(mcp, "jsm_list_alerts", { query: "status:open" });
 
     assert.notEqual(result.isError, true);
@@ -120,7 +93,7 @@ describe("empty result sets", () => {
 
   it("distinguishes an empty site from an empty query result", async () => {
     const { client } = stubClient({ items: [] });
-    const mcp = await connectTools(registerAlertReadTools, client);
+    const mcp = await connectTools(alertReadTools, client);
     const result = await callTool(mcp, "jsm_list_alerts", {});
 
     assert.notEqual(result.isError, true);
@@ -129,7 +102,7 @@ describe("empty result sets", () => {
 
   it("reports an empty note timeline without a schema error", async () => {
     const { client } = stubClient({ items: [] });
-    const mcp = await connectTools(registerAlertReadTools, client);
+    const mcp = await connectTools(alertReadTools, client);
     const result = await callTool(mcp, "jsm_list_alert_notes", { alert_id: "abc-123" });
 
     assert.notEqual(result.isError, true);
@@ -145,7 +118,7 @@ describe("truncated list responses", () => {
 
   it("reports the count it actually returned, not the count it fetched", async () => {
     const { client } = stubClient(oversized);
-    const mcp = await connectTools(registerAlertReadTools, client);
+    const mcp = await connectTools(alertReadTools, client);
     const result = await callTool(mcp, "jsm_list_alerts", { limit: 100, offset: 0 });
 
     const alerts = result.structuredContent?.alerts as unknown[];
@@ -160,7 +133,7 @@ describe("truncated list responses", () => {
     // Regression: next_offset used to be offset + limit, which paged straight
     // past every alert truncation had dropped.
     const { client } = stubClient(oversized);
-    const mcp = await connectTools(registerAlertReadTools, client);
+    const mcp = await connectTools(alertReadTools, client);
     const result = await callTool(mcp, "jsm_list_alerts", { limit: 100, offset: 40 });
 
     const alerts = result.structuredContent?.alerts as unknown[];
@@ -172,7 +145,7 @@ describe("truncated list responses", () => {
 
   it("flags truncation in json mode, where the prose notice is dropped", async () => {
     const { client } = stubClient(oversized);
-    const mcp = await connectTools(registerAlertReadTools, client);
+    const mcp = await connectTools(alertReadTools, client);
     const result = await callTool(mcp, "jsm_list_alerts", {
       limit: 100,
       response_format: "json",
@@ -187,17 +160,16 @@ describe("truncated list responses", () => {
 
   it("keeps markdown mode's human-readable truncation notice", async () => {
     const { client } = stubClient(oversized);
-    const mcp = await connectTools(registerAlertReadTools, client);
+    const mcp = await connectTools(alertReadTools, client);
     const result = await callTool(mcp, "jsm_list_alerts", { limit: 100 });
 
     assert.match(textOf(result), /Truncated: showing \d+ of 100 records/);
   });
 });
 
-describe("registerAlertReadTools", () => {
-  it("registers exactly the read tools the README documents", () => {
-    const { client } = stubClient();
-    const names = [...captureHandlers(client).keys()].sort();
+describe("the alerts domain", () => {
+  it("exports exactly the read tools the README documents", () => {
+    const names = alertReadTools.map((tool) => tool.name).sort();
 
     assert.deepEqual(names, [
       "jsm_get_alert",

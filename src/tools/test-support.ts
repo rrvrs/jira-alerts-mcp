@@ -14,10 +14,10 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpServer as McpServerImpl } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { JsmClient, loadConfig } from "../services/client.js";
+import { registerTools, type AnyToolDefinition } from "./define.js";
 import type { ToolResult } from "../services/format.js";
 import type { Paged } from "../types.js";
 
@@ -58,19 +58,17 @@ export function stubClient(page: Paged<unknown> = { items: [] }): StubClient {
   return { client, calls };
 }
 
-export type Register = (server: McpServer, client: JsmClient) => void;
-
 /**
  * Stands up a real server and client over an in-memory transport. Tools called
  * through the returned client go through argument parsing, the handler, and
  * output-schema validation — the same path a live MCP client takes.
  */
 export async function connectTools(
-  register: Register | Register[],
+  definitions: AnyToolDefinition[],
   client: JsmClient,
 ): Promise<Client> {
   const server = new McpServerImpl({ name: "test", version: "0.0.0" });
-  for (const fn of Array.isArray(register) ? register : [register]) fn(server, client);
+  registerTools(server, client, definitions);
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const mcpClient = new Client({ name: "test-client", version: "0.0.0" });

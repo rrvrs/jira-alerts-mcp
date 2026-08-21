@@ -44,11 +44,15 @@ Start with `jsm_list_schedules`. It needs no ids and confirms auth, scopes, and 
 
 Three things in this codebase are load-bearing. Changing them by accident is the most likely way to break the server subtly.
 
-**1. Every write goes through `executeAction`.** All four mutating tools in [`src/tools/alert-actions.ts`](src/tools/alert-actions.ts) share one helper. JSM applies alert actions asynchronously and returns a receipt rather than the updated alert, and `executeAction` is what guarantees every write tool reports that receipt the same way and points at `jsm_get_request_status`. A new write tool that renders its own response will teach the model an inconsistent contract, and it will start believing writes have landed when they haven't.
+**1. Every write goes through `executeAction`.** All four mutating tools share the helper in [`src/tools/actions/execute-action.ts`](src/tools/actions/execute-action.ts). JSM applies alert actions asynchronously and returns a receipt rather than the updated alert, and `executeAction` is what guarantees every write tool reports that receipt the same way and points at `jsm_get_request_status`. A new write tool that renders its own response will teach the model an inconsistent contract, and it will start believing writes have landed when they haven't.
 
-**2. Every list tool wraps its output in `withCharacterLimit`.** See [`src/services/format.ts`](src/services/format.ts). It halves the result set until the rendered text fits 25,000 characters and appends a note telling the model how to get the rest. Without it, one broad query can consume the entire context window.
+**2. Every list tool goes through `executeList`.** See [`src/tools/list-executor.ts`](src/tools/list-executor.ts). It owns fetching, the empty-result branch, truncation to 25,000 characters, the pagination block and the format switch.
 
-**3. `inputSchema` takes a raw Zod shape, not a `z.object(...)`.** The MCP TypeScript SDK's `registerTool` wraps the shape itself. Passing a `z.object` — as some examples online show — fails. Tools here define a plain object of Zod types and derive the input type with `z.infer<z.ZodObject<typeof shape>>`. One consequence: `.strict()` cannot be applied to a raw shape, so unknown keys are stripped rather than rejected.
+This is not tidiness. Those five steps were once copy-pasted into each list handler, and two bugs lived in the copies: an empty result set returned `ok(text)` with no `structuredContent`, which the SDK rejects outright when an `outputSchema` is declared, so "no alerts matched" became `-32602`; and the pagination block was computed from the untruncated page, so `next_offset` skipped every record truncation had dropped. Both had to be fixed four times. If you find yourself hand-rolling a list handler, that is the bug re-entering.
+
+Two rules follow from it: an empty page is an ordinary answer and must still ship a structured payload (use `emptyResult`), and `count`/`next_offset` describe what the response actually contains, never what the API returned.
+
+**3. `inputSchema` takes a raw Zod shape, not a `z.object(...)`.** The MCP TypeScript SDK's `registerTool` wraps the shape itself. Passing a `z.object` — as some examples online show — fails. Tools here define a plain object of Zod types, and [`defineTool`](src/tools/define.ts) infers the handler's `params` from it, so no tool needs to write `z.infer<z.ZodObject<typeof shape>>` by hand. One consequence of the raw shape: `.strict()` cannot be applied to it, so unknown keys are stripped rather than rejected.
 
 Related: `ToolResult` in `src/services/format.ts` is a **type alias, not an interface**. The SDK's `CallToolResult` carries an index signature, and TypeScript only grants an implicit one to type aliases. Making it an interface breaks every tool callback's typecheck.
 
@@ -56,11 +60,12 @@ Related: `ToolResult` in `src/services/format.ts` is a **type alias, not an inte
 
 1. Add any request/response types to [`src/types.ts`](src/types.ts). Type fields optional unless the API always returns them — the list endpoint returns a thinner object than the get endpoint.
 2. Reuse the shared Zod fragments from [`src/schemas/common.ts`](src/schemas/common.ts) (`limitField`, `offsetField`, `alertIdField`, `responseFormatField`, …) rather than redefining bounds.
-3. Register in the file matching the tool's nature: `alerts.ts` (read), `alert-actions.ts` (write), `oncall.ts` (schedules).
-4. Add rendering to [`src/services/format.ts`](src/services/format.ts). Don't build markdown inline in the tool.
-5. Set `annotations` honestly — `readOnlyHint`, `destructiveHint`, `idempotentHint`. Clients use these to decide what to auto-approve.
-6. Add tests. Rendering and guard logic are testable offline; that is where the coverage should go.
-7. Update the tool table in the README.
+3. Create one file per tool under the domain it belongs to — `tools/alerts/` (read), `tools/actions/` (write), `tools/oncall/` (schedules) — exporting a single `defineTool({ ... })`. `defineTool` infers your handler's `params` from `inputSchema`, so don't hand-annotate them.
+4. Add it to that domain's `index.ts` array. `server.ts` picks it up from there.
+5. Add rendering to [`src/services/format.ts`](src/services/format.ts). Don't build markdown inline in the tool.
+6. Set `annotations` honestly — `readOnlyHint`, `destructiveHint`, `idempotentHint`. Clients use these to decide what to auto-approve.
+7. Add tests, and drive them through `connectTools` from [`src/tools/test-support.ts`](src/tools/test-support.ts) rather than calling the handler directly. Calling handlers directly skips the SDK's output-schema validation — that is exactly how the empty-result bug above shipped with a green suite asserting it was fine.
+8. Update the tool table in the README.
 
 ### On tool descriptions
 

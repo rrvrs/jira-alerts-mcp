@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import type { Schedule } from "../types.js";
-import { registerOnCallTools } from "./oncall.js";
+import { onCallTools } from "./oncall/index.js";
 import { callTool, connectTools, stubClient, textOf } from "./test-support.js";
 
 const schedule = (index: number, padding = ""): Schedule => ({
@@ -26,7 +26,7 @@ describe("jsm_list_schedules", () => {
   // exactly the users it was written to help.
   it("explains team visibility instead of failing when no schedules are visible", async () => {
     const { client } = stubClient({ items: [] });
-    const mcp = await connectTools(registerOnCallTools, client);
+    const mcp = await connectTools(onCallTools, client);
     const result = await callTool(mcp, "jsm_list_schedules", {});
 
     assert.notEqual(result.isError, true);
@@ -37,7 +37,7 @@ describe("jsm_list_schedules", () => {
 
   it("lists schedules and reports honest pagination", async () => {
     const { client, calls } = stubClient({ items: [schedule(1), schedule(2)] });
-    const mcp = await connectTools(registerOnCallTools, client);
+    const mcp = await connectTools(onCallTools, client);
     const result = await callTool(mcp, "jsm_list_schedules", { limit: 20 });
 
     assert.equal(calls[0]?.path, "/v1/schedules");
@@ -51,7 +51,7 @@ describe("jsm_list_schedules", () => {
   it("does not skip schedules that truncation withheld", async () => {
     const items = Array.from({ length: 100 }, (_, i) => schedule(i, ` ${"x".repeat(400)}`));
     const { client } = stubClient({ items });
-    const mcp = await connectTools(registerOnCallTools, client);
+    const mcp = await connectTools(onCallTools, client);
     const result = await callTool(mcp, "jsm_list_schedules", { limit: 100, offset: 0 });
 
     const schedules = result.structuredContent?.schedules as unknown[];
@@ -67,7 +67,7 @@ describe("jsm_list_schedules", () => {
 describe("jsm_get_on_call", () => {
   it("passes the schedule identifier type and date through to the API", async () => {
     const { client, calls } = stubClient({ items: [{ onCallRecipients: ["ada@example.com"] }] });
-    const mcp = await connectTools(registerOnCallTools, client);
+    const mcp = await connectTools(onCallTools, client);
 
     await callTool(mcp, "jsm_get_on_call", {
       schedule_id: "platform",
@@ -83,7 +83,7 @@ describe("jsm_get_on_call", () => {
 
   it("treats nobody being rostered as an answer, not an error", async () => {
     const { client } = stubClient({ items: [{ onCallRecipients: [] }] });
-    const mcp = await connectTools(registerOnCallTools, client);
+    const mcp = await connectTools(onCallTools, client);
     const result = await callTool(mcp, "jsm_get_on_call", { schedule_id: "s1" });
 
     assert.notEqual(result.isError, true);
@@ -92,7 +92,7 @@ describe("jsm_get_on_call", () => {
 
   it("url-encodes a schedule name containing a slash", async () => {
     const { client, calls } = stubClient({ items: [{ onCallRecipients: [] }] });
-    const mcp = await connectTools(registerOnCallTools, client);
+    const mcp = await connectTools(onCallTools, client);
 
     await callTool(mcp, "jsm_get_on_call", {
       schedule_id: "platform/eu",
@@ -114,7 +114,7 @@ describe("jsm_get_next_on_call", () => {
         },
       ],
     });
-    const mcp = await connectTools(registerOnCallTools, client);
+    const mcp = await connectTools(onCallTools, client);
     const result = await callTool(mcp, "jsm_get_next_on_call", { schedule_id: "s1" });
 
     assert.equal(calls[0]?.path, "/v1/schedules/s1/next-on-calls");

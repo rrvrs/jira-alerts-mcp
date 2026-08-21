@@ -120,20 +120,29 @@ Paths were checked against the [JSM ops REST API reference](https://developer.at
 
 ```
 src/
-├── index.ts                 # transports, startup credential validation
+├── index.ts                 # transports and startup credential validation
+├── server.ts                # assembles the tool domains
 ├── constants.ts             # API root, limits
 ├── types.ts                 # JSM API interfaces
-├── schemas/common.ts        # shared Zod fragments
+├── schemas/common.ts        # Zod fragments shared across domains
 ├── services/
 │   ├── client.ts            # auth, request, envelope normalisation, error mapping
 │   └── format.ts            # markdown rendering, truncation, result envelopes
 └── tools/
-    ├── alerts.ts            # read tools
-    ├── alert-actions.ts     # write tools
-    └── oncall.ts            # schedules and on-call
+    ├── define.ts            # defineTool() + registerTools()
+    ├── list-executor.ts     # the shared list pipeline
+    ├── alerts/              # read tools — one file per tool, plus shapes.ts
+    ├── actions/             # write tools, all via execute-action.ts
+    └── oncall/              # schedules and on-call
 ```
 
-Two conventions worth preserving as you extend it: all four write tools go through a single `executeAction` helper, so the async-receipt contract can't drift between them; and every list tool runs its output through `withCharacterLimit`, which halves the result set until it fits 25,000 characters and appends a message telling the model how to get the rest.
+One tool per file. A tool module owns its input shape, its description and its handler, and nothing else — the largest is ~100 lines. `server.ts` concatenates the three domains' exported arrays; `index.ts` only knows about transports.
+
+Three conventions worth preserving as you extend it:
+
+- **Every list tool goes through `executeList`** (`tools/list-executor.ts`). It owns fetching, the empty-result branch, truncation to 25,000 characters, the pagination block and the format switch. Two bugs once lived in per-tool copies of that logic — an empty page returned a result the SDK rejected, and `next_offset` skipped records truncation had dropped. There is one copy now, on purpose.
+- **Every write goes through `executeAction`** (`tools/actions/execute-action.ts`), so the async-receipt contract can't drift between the four write tools.
+- **Pagination reports what was delivered, not what was fetched.** `count` and `next_offset` describe the records actually in the response, and `truncated` flags when the API returned more than fitted.
 
 ### A note on `inputSchema`
 

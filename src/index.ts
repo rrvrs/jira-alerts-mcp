@@ -9,7 +9,6 @@
  * Transports: stdio by default; streamable HTTP with TRANSPORT=http.
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
@@ -17,19 +16,7 @@ import type { NextFunction, Request, Response } from "express";
 
 import { SERVER_NAME, SERVER_VERSION } from "./constants.js";
 import { JsmClient, JsmConfigError, loadConfig } from "./services/client.js";
-import { registerAlertReadTools } from "./tools/alerts.js";
-import { registerAlertActionTools } from "./tools/alert-actions.js";
-import { registerOnCallTools } from "./tools/oncall.js";
-
-function buildServer(client: JsmClient): McpServer {
-  const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
-
-  registerAlertReadTools(server, client);
-  registerAlertActionTools(server, client);
-  registerOnCallTools(server, client);
-
-  return server;
-}
+import { buildServer } from "./server.js";
 
 async function runStdio(client: JsmClient): Promise<void> {
   const server = buildServer(client);
