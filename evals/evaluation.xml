@@ -1,0 +1,65 @@
+<!--
+  Evaluation set for jira-alerts-mcp.
+
+  Every question below is read-only, independent, and requires multiple tool
+  calls to answer. The <answer> values are TODO because they can only be
+  resolved against your live JSM tenant — run each question yourself
+  with the server connected, confirm the answer is single-valued and stable
+  (won't change next week), then fill it in. Questions whose answer drifts
+  with time should be re-anchored to a fixed window, e.g. change "last week"
+  to an explicit createdAt range.
+
+  Deliberately excluded: anything that acknowledges, closes, annotates or
+  reassigns an alert. Evaluations must not mutate production alert state.
+-->
+<evaluation>
+  <qa_pair>
+    <question>Among alerts created in July 2026 with priority P1, which one has the highest deduplication count? Give its tinyId.</question>
+    <answer>TODO</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Find the oldest alert that is currently still open and unacknowledged. How many days has it been open, rounded down?</question>
+    <answer>TODO</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>How many on-call schedules exist on the site, and how many of them are disabled? Answer as "total/disabled".</question>
+    <answer>TODO</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>For the alert with the highest deduplication count in July 2026, who wrote the first note on its timeline?</question>
+    <answer>TODO</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Which integration is the source of the largest number of open alerts? Give the integration name.</question>
+    <answer>TODO</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Take the schedule whose name contains "platform". Which timezone is it configured in?</question>
+    <answer>TODO</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>For the most recent P1 alert closed in July 2026, how many minutes elapsed between its creation and its acknowledgement? Round to the nearest minute.</question>
+    <answer>TODO</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Among alerts tagged with the most common tag on the site, what fraction were acknowledged before being closed? Answer as a percentage rounded to the nearest whole number.</question>
+    <answer>TODO</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Look at the activity log of the longest-open unacknowledged alert. How many distinct escalation steps fired before it was left unhandled?</question>
+    <answer>TODO</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>For a specific past incident window (fix an exact UTC timestamp in July 2026 when a P1 fired), who was on-call on the owning team's schedule at that moment?</question>
+    <answer>TODO</answer>
+  </qa_pair>
+</evaluation>

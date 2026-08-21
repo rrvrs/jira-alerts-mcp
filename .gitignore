@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Environment / credentials — never commit a real Atlassian API token
+.env
+.env.*
+!.env.example
+
+# Test & coverage output
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/

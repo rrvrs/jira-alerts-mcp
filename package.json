@@ -1,0 +1,59 @@
+{
+  "name": "jira-alerts-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for the Jira Service Management Operations REST API — alerts and on-call",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "jira",
+    "jira-service-management",
+    "jsm",
+    "opsgenie",
+    "alerts",
+    "on-call",
+    "incident-response",
+    "claude"
+  ],
+  "license": "Apache-2.0",
+  "author": "Rahul Veer Singh",
+  "homepage": "https://github.com/rrvrs/jira-alerts-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rrvrs/jira-alerts-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rrvrs/jira-alerts-mcp/issues"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "jira-alerts-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc && chmod +x dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "clean": "rm -rf dist",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "axios": "^1.7.9",
+    "express": "^4.21.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
