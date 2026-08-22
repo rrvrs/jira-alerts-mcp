@@ -93,6 +93,34 @@ if (!nameTemplate || !matrixValues) {
   );
 }
 
+// --- Server identity in source vs the manifests ----------------------------
+//
+// SERVER_VERSION is what the server reports over the MCP handshake, so a stale
+// value misreports the version to every connected client while every manifest
+// check still passes. RELEASING.md used to call this "three places"; it is four,
+// and this is the one nothing was watching.
+
+const constants = text("src/constants.ts");
+const literal = (name) =>
+  new RegExp(`export const ${name} = "([^"]+)"`).exec(constants)?.[1];
+
+const serverName = literal("SERVER_NAME");
+const serverVersion = literal("SERVER_VERSION");
+
+expect(
+  serverName !== undefined && serverVersion !== undefined,
+  "could not read SERVER_NAME / SERVER_VERSION from src/constants.ts",
+);
+expect(
+  serverVersion === undefined || serverVersion === pkg.version,
+  `src/constants.ts SERVER_VERSION (${serverVersion}) !== package.json version (${pkg.version}) — ` +
+    "the handshake would report a version nothing else agrees with",
+);
+expect(
+  serverName === undefined || serverName === pkg.name,
+  `src/constants.ts SERVER_NAME (${serverName}) !== package.json name (${pkg.name})`,
+);
+
 // --- Declared floors vs installed versions ---------------------------------
 //
 // `npm outdated` compares installed against *latest*, so it stays silent while
@@ -145,5 +173,6 @@ if (failures.length) {
 }
 
 console.log(`✓ package.json and server.json agree — ${server.name}@${server.version}`);
+console.log(`✓ src/constants.ts reports ${serverName}@${serverVersion}`);
 console.log(`✓ ruleset requires exactly the checks CI produces`);
 console.log(`✓ ${checked} dependency floors match their installed versions`);
