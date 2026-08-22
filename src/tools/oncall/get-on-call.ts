@@ -39,7 +39,8 @@ Examples:
 
 Error handling:
   - An empty result means nobody is rostered at that moment — a real and important answer, not a failure.
-  - HTTP 404 means the schedule id/name is wrong; list them with jsm_list_schedules.`,
+  - HTTP 404 means the schedule id/name is wrong; list them with jsm_list_schedules.
+  - HTTP 401 here while alert tools work means the token is missing read:ops-config:jira-service-management — schedules and on-call sit behind a different scope from alerts, so this is a scope gap, not a bad credential.`,
   inputSchema: currentOnCallShape,
   outputSchema: { on_call: z.object({}).passthrough() },
   annotations: {

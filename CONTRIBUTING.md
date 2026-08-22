@@ -40,7 +40,9 @@ npm run build
 npm run inspect
 ```
 
-Start with `jsm_list_schedules`. It needs no ids and confirms auth, scopes, and team visibility in one call. If it returns an empty list rather than an error, the credentials are valid but the account can't see the team's Operations page.
+Start with `jsm_list_alerts`. It needs no ids and confirms the credentials plus `read:ops-alert:jira-service-management`, the scope eight of the twelve tools share.
+
+Check `jsm_list_schedules` **separately**. Schedules and on-call need `read:ops-config:jira-service-management`, a different grant, so this call can 401 on a token where every alert tool works. That is a scope gap, not a bad credential — do not treat one call as proof the other is healthy. If it returns an empty list rather than an error, the scope is present and the account simply can't see the team's Operations page.
 
 ### Endpoint verification status
 

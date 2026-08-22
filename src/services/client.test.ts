@@ -196,13 +196,24 @@ describe("handleApiError", () => {
     assert.match(message, /status:open/);
   });
 
-  it("points a 401 at the credentials", () => {
-    assert.match(handleApiError(httpError(401), "ctx"), /JSM_EMAIL\/JSM_API_TOKEN/);
+  it("offers both causes on a 401, not just the credentials", () => {
+    // A missing ops-config scope arrives as 401. Blaming the credentials alone
+    // sends the reader to rotate a token that was working — the exact
+    // misdiagnosis this message exists to prevent.
+    const message = handleApiError(httpError(401), "ctx");
+    assert.match(message, /JSM_EMAIL\/JSM_API_TOKEN/);
+    assert.match(message, /read:ops-config:jira-service-management/);
+    assert.match(message, /jsm_list_alerts succeeds and only schedule or on-call calls fail/);
   });
 
-  it("names the required write scope on a 403", () => {
+  it("names the scope for each endpoint group on a 403", () => {
     const message = handleApiError(httpError(403), "ctx");
+    assert.match(message, /read:ops-alert:jira-service-management/);
+    assert.match(message, /read:ops-config:jira-service-management/);
     assert.match(message, /write:ops-alert:jira-service-management/);
+    // Writes need the read scope alongside the write one; saying only "write"
+    // is what let a write-scope-only token look sufficient.
+    assert.match(message, /requires the read scope alongside the write one/);
     assert.match(message, /Read-only Jira scopes are not sufficient/);
   });
 

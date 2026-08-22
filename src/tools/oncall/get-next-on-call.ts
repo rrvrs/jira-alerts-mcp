@@ -35,7 +35,10 @@ Returns (json format):
 
 Examples:
   - "Who picks up after this shift?" -> schedule_id=<id>
-  - "Draft a handover note" -> combine with jsm_list_alerts query="status:open"`,
+  - "Draft a handover note" -> combine with jsm_list_alerts query="status:open"
+
+Error handling:
+  - HTTP 401 here while alert tools work means the token is missing read:ops-config:jira-service-management — schedules and on-call sit behind a different scope from alerts, so this is a scope gap, not a bad credential.`,
   inputSchema: onCallShape,
   outputSchema: { next_on_call: z.object({}).passthrough() },
   annotations: {

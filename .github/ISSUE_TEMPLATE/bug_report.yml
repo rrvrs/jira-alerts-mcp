@@ -86,6 +86,7 @@ body:
     attributes:
       label: Checks
       options:
-        - label: "`jsm_list_schedules` works, so auth and scopes are not the problem"
+        - label: "`jsm_list_alerts` works, so the credentials and `read:ops-alert` are fine"
+        - label: "For an on-call tool — `jsm_list_schedules` works, so `read:ops-config` is fine (it is a separate scope)"
         - label: I confirmed I passed the full alert id, not the short tinyId from the UI
         - label: For a write tool — I checked `jsm_get_request_status` rather than re-reading the alert
