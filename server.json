@@ -18,7 +18,7 @@
       "environmentVariables": [
         {
           "name": "JSM_CLOUD_ID",
-          "description": "Atlassian site cloud id (a UUID). Find it at https://<your-site>.atlassian.net/_edgeAuth/tenantInfo",
+          "description": "Atlassian site cloud id (a UUID). Find it at https://<your-site>.atlassian.net/_edge/tenant_info",
           "isRequired": true,
           "isSecret": false,
           "format": "string"

@@ -52,7 +52,7 @@ describe("loadConfig", () => {
     );
     assert.ok(error instanceof JsmConfigError);
     assert.match(error.message, /JSM_CLOUD_ID is required/);
-    assert.match(error.message, /tenantInfo/);
+    assert.match(error.message, /_edge\/tenant_info/);
   });
 
   it("refuses to start with no credentials at all", () => {

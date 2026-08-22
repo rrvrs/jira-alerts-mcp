@@ -28,8 +28,13 @@ There is nothing to clone or build — your MCP client runs the published packag
 **1. Find your cloud id.** Open this while logged in to your site:
 
 ```
-https://<your-site>.atlassian.net/_edgeAuth/tenantInfo
+https://<your-site>.atlassian.net/_edge/tenant_info
 ```
+
+It answers with one line — `{"cloudId":"..."}` — and that UUID is what
+`JSM_CLOUD_ID` wants. If you'd rather not rely on that endpoint, the cloud id is
+also the segment after `/s/` in the URL at
+[admin.atlassian.com](https://admin.atlassian.com) → Apps → Sites → your site.
 
 **2. Create an API token** at
 [id.atlassian.com](https://id.atlassian.com/manage-profile/security/api-tokens).
