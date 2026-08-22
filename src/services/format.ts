@@ -72,9 +72,11 @@ export interface PaginationInput {
   /** Records the API returned for this page, before truncation. */
   fetched: number;
   limit: number;
-  offset?: number;
-  totalCount?: number;
-  nextCursor?: string;
+  // Present-and-undefined: callers spread a whole pagination object in, keys
+  // included, whether or not the API returned a value for them.
+  offset?: number | undefined;
+  totalCount?: number | undefined;
+  nextCursor?: string | undefined;
 }
 
 /**

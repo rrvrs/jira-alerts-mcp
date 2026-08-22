@@ -53,6 +53,12 @@ async function runHttp(client: JsmClient): Promise<void> {
     // A fresh stateless transport per request avoids request-id collisions
     // between concurrent clients.
     const server = buildServer(client);
+    // @ts-expect-error The SDK types sessionIdGenerator as `?: () => string`, but
+    // its own docs give `sessionIdGenerator: undefined` as the way to select
+    // stateless mode. Under exactOptionalPropertyTypes those disagree. Dropping
+    // the key to satisfy the compiler would change which mode we run in, so the
+    // key stays and the error is suppressed. Remove this once the SDK's types
+    // admit undefined — an unused suppression fails the build and says so.
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
@@ -64,6 +70,11 @@ async function runHttp(client: JsmClient): Promise<void> {
     });
 
     try {
+      // @ts-expect-error Transport declares `sessionId?: string` while
+      // StreamableHTTPServerTransport declares `get sessionId(): string | undefined`
+      // — a required property whose type includes undefined. Under
+      // exactOptionalPropertyTypes the SDK's own class does not satisfy its own
+      // interface (same for onclose/onerror/onmessage). Nothing to fix on our side.
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (error) {

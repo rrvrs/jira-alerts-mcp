@@ -30,7 +30,7 @@ export const testConfig = loadConfig({
 export interface StubClient {
   client: JsmClient;
   /** Every collection request the tool issued, in order. */
-  calls: Array<{ path: string; params?: Record<string, unknown> }>;
+  calls: Array<{ path: string; params?: Record<string, unknown> | undefined }>;
 }
 
 /**
