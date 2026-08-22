@@ -13,6 +13,7 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "isolatedModules": true,
+    "exactOptionalPropertyTypes": true,
     "verbatimModuleSyntax": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

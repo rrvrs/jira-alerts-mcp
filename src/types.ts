@@ -129,8 +129,10 @@ export interface OnCallData {
  */
 export interface Paged<T> {
   items: T[];
-  paging?: { next?: string; first?: string; last?: string };
-  totalCount?: number;
+  // Present-and-undefined: getCollection always sets these, from an envelope
+  // that may not carry them.
+  paging?: { next?: string; first?: string; last?: string } | undefined;
+  totalCount?: number | undefined;
 }
 
 /** Standard pagination metadata attached to every list tool response. */

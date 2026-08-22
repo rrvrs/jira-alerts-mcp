@@ -10,6 +10,7 @@
  */
 
 import { readdirSync, readFileSync } from "node:fs";
+import { parse as parseYaml } from "yaml";
 
 const read = (path) => JSON.parse(readFileSync(new URL(`../${path}`, import.meta.url), "utf8"));
 
@@ -68,32 +69,37 @@ expect(
 const text = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 /** Job names a workflow reports on a pull request, expanded over its node matrix. */
-const jobNamesOf = (workflow) => {
-  if (!/^\s*pull_request:/m.test(workflow)) return [];
+const jobNamesOf = (path) => {
+  const doc = parseYaml(text(path));
 
-  const names = [...workflow.matchAll(/^\s{4}name:\s*(.+)$/gm)].map((m) => m[1].trim());
-  const matrix = workflow
-    .match(/^\s*node:\s*\[([^\]]+)\]/m)?.[1]
-    ?.split(",")
-    .map((value) => value.trim().replace(/^['"]|['"]$/g, ""));
+  // GitHub's `on:` is a YAML 1.1 boolean. This parser is 1.2, where it stays the
+  // string "on" — but read both. If a schema change ever made every workflow
+  // look triggerless, this check would pass while gating nothing.
+  const triggers = doc?.on ?? doc?.[true];
+  if (!triggers || !("pull_request" in triggers)) return [];
 
-  return names.flatMap((name) => {
-    if (!name.includes("${{")) return [name];
-    if (!matrix) {
-      failures.push(`job name "${name}" interpolates a matrix that could not be read`);
+  return Object.entries(doc.jobs ?? {}).flatMap(([key, job]) => {
+    // GitHub falls back to the job key when a job declares no `name`.
+    const name = job?.name ?? key;
+    if (!String(name).includes("${{")) return [name];
+
+    const matrix = job?.strategy?.matrix?.node;
+    if (!Array.isArray(matrix)) {
+      failures.push(`${path}: job name "${name}" interpolates a matrix that could not be read`);
       return [];
     }
-    return matrix.map((value) => name.replaceAll(/\$\{\{\s*matrix\.node\s*\}\}/g, value));
+    return matrix.map((value) =>
+      String(name).replaceAll(/\$\{\{\s*matrix\.node\s*\}\}/g, String(value)),
+    );
   });
 };
 
-const ci = text(".github/workflows/ci.yml");
-const ciJobs = jobNamesOf(ci);
+const ciJobs = jobNamesOf(".github/workflows/ci.yml");
 
 const produced = new Set(
   readdirSync(new URL("../.github/workflows", import.meta.url))
     .filter((file) => file.endsWith(".yml") || file.endsWith(".yaml"))
-    .flatMap((file) => jobNamesOf(text(`.github/workflows/${file}`))),
+    .flatMap((file) => jobNamesOf(`.github/workflows/${file}`)),
 );
 
 const ruleset = read(".github/rulesets/main.json");

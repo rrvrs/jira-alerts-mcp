@@ -14,9 +14,12 @@ import type { Paged } from "../types.js";
 
 export interface JsmConfig {
   cloudId: string;
-  email?: string;
-  apiToken?: string;
-  oauthToken?: string;
+  // `| undefined` is deliberate under exactOptionalPropertyTypes: loadConfig
+  // builds this from process.env and passes the key through even when unset,
+  // so these are present-and-undefined rather than absent.
+  email?: string | undefined;
+  apiToken?: string | undefined;
+  oauthToken?: string | undefined;
 }
 
 /** Thrown for auth/config problems detected before any network call. */
@@ -75,7 +78,7 @@ export class JsmClient {
   async request<T>(
     method: "GET" | "POST" | "PUT" | "DELETE",
     path: string,
-    options: { params?: Record<string, unknown>; body?: unknown } = {},
+    options: { params?: Record<string, unknown> | undefined; body?: unknown } = {},
   ): Promise<T> {
     const response = await this.http.request<T>({
       method,
