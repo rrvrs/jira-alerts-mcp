@@ -38,7 +38,9 @@ export const closeShape = {
     .string()
     .max(25_000)
     .optional()
-    .describe("Optional note explaining the resolution. Strongly recommended — it's the record future responders will read."),
+    .describe(
+      "Optional note explaining the resolution. Strongly recommended — it's the record future responders will read.",
+    ),
 };
 
 export const addNoteShape = {

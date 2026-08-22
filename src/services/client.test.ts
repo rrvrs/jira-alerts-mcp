@@ -56,9 +56,7 @@ describe("loadConfig", () => {
   });
 
   it("refuses to start with no credentials at all", () => {
-    const error = captureError(() =>
-      loadConfig({ JSM_CLOUD_ID: "cloud-id" } as NodeJS.ProcessEnv),
-    );
+    const error = captureError(() => loadConfig({ JSM_CLOUD_ID: "cloud-id" } as NodeJS.ProcessEnv));
     assert.ok(error instanceof JsmConfigError);
     assert.match(error.message, /No credentials found/);
     assert.match(error.message, /api-tokens/);
@@ -85,10 +83,7 @@ describe("loadConfig", () => {
   });
 
   it("treats a whitespace-only value as absent rather than as a credential", () => {
-    assert.throws(
-      () => loadConfig({ JSM_CLOUD_ID: "   " } as NodeJS.ProcessEnv),
-      JsmConfigError,
-    );
+    assert.throws(() => loadConfig({ JSM_CLOUD_ID: "   " } as NodeJS.ProcessEnv), JsmConfigError);
     assert.throws(
       () => loadConfig({ JSM_CLOUD_ID: "c", JSM_OAUTH_TOKEN: "   " } as NodeJS.ProcessEnv),
       JsmConfigError,
@@ -171,13 +166,19 @@ describe("JsmClient.getOne", () => {
 /** Builds an AxiosError carrying an HTTP response, as axios would on a 4xx/5xx. */
 function httpError(status: number, message?: string): AxiosError {
   const config = { headers: new AxiosHeaders() };
-  return new AxiosError("Request failed", "ERR_BAD_REQUEST", config, {}, {
-    status,
-    statusText: "",
-    headers: {},
+  return new AxiosError(
+    "Request failed",
+    "ERR_BAD_REQUEST",
     config,
-    data: message ? { message } : {},
-  });
+    {},
+    {
+      status,
+      statusText: "",
+      headers: {},
+      config,
+      data: message ? { message } : {},
+    },
+  );
 }
 
 describe("handleApiError", () => {

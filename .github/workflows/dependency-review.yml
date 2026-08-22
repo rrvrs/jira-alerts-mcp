@@ -1,0 +1,32 @@
+name: Dependency review
+
+# Fails the PR that introduces a dependency carrying a known high-severity
+# advisory. It is deliberately NOT in the ruleset's required checks, so a
+# maintainer can still merge over it with the failure visible, rather than the
+# finding being silently swallowed.
+#
+# Requires the repository's Dependency graph to be enabled — without it the
+# action errors out rather than passing vacuously, which is the behaviour we
+# want from a supply-chain check.
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Review dependency changes
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high

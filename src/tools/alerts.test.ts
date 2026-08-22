@@ -155,7 +155,12 @@ describe("truncated list responses", () => {
     // "_Truncated: showing N of M_" notice never reaches the model here. The
     // structured flag is the only signal, and it has to be present.
     assert.equal(textOf(result).includes("Truncated"), false);
-    assert.equal((result.structuredContent?.pagination as Record<string, unknown>).truncated, true);
+    // Assert presence separately: reading through `?.` and then indexing turns a
+    // missing structuredContent into a TypeError instead of a readable failure,
+    // and a dropped structuredContent is exactly the regression this guards.
+    assert.ok(result.structuredContent, "expected structuredContent on a truncated page");
+    const pagination = result.structuredContent.pagination as Record<string, unknown>;
+    assert.equal(pagination.truncated, true);
   });
 
   it("keeps markdown mode's human-readable truncation notice", async () => {

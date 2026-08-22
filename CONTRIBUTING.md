@@ -22,12 +22,14 @@ Then:
 | Command | What it does |
 |---|---|
 | `npm run dev` | Runs the server from source with reload on change |
-| `npm run typecheck` | `tsc --noEmit` — must pass, `strict` is on |
+| `npm run lint` | Biome lint + format check over `src/` and `scripts/` |
+| `npm run format` | Applies what `lint` would ask for |
+| `npm run typecheck` | `tsc --noEmit` over sources *and* tests — must pass, `strict` is on |
 | `npm test` | The offline test suite (`node:test`, no network, no tenant) |
 | `npm run build` | Compiles to `dist/` |
 | `npm run inspect` | MCP Inspector against `dist/index.js` — needs credentials |
 
-CI runs typecheck, test, and build on Node 22 and 24. All three must pass.
+CI runs lint, typecheck, test, and build on Node 22 and 24, plus CodeQL. All of them must pass — the `main` ruleset gates merges on them.
 
 ## Verifying against a real tenant
 

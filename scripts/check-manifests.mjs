@@ -9,7 +9,8 @@
  * gone out and can't be taken back. Catching it in CI is the whole point.
  */
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { parse as parseYaml } from "yaml";
 
 const read = (path) => JSON.parse(readFileSync(new URL(`../${path}`, import.meta.url), "utf8"));
 
@@ -54,44 +55,102 @@ expect(
   `server.json description is ${server.description?.length} characters; the schema allows 100`,
 );
 
-// --- Ruleset status checks vs the CI job matrix -----------------------------
+// --- Ruleset status checks vs the jobs that actually report ----------------
 //
-// The `main` ruleset requires status checks by name, and those names come from
-// the CI job's `name:` expanded over its matrix. Rename the job and the ruleset
-// keeps waiting for checks that will never report — every PR blocks forever,
-// with nothing in the diff to explain it.
+// The `main` ruleset requires status checks by name. Require a name nothing
+// produces and every PR blocks forever, with nothing in the diff to explain it.
+// Conversely, add a CI matrix leg without gating it and the new leg is free to
+// fail. Both are checked below.
+//
+// Only workflows that trigger on `pull_request` can satisfy a ruleset that
+// gates pull requests — release.yml runs on tags, so its job is not a candidate
+// no matter how it is named.
 
 const text = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-const ci = text(".github/workflows/ci.yml");
+/** Job names a workflow reports on a pull request, expanded over its node matrix. */
+const jobNamesOf = (path) => {
+  const doc = parseYaml(text(path));
+
+  // GitHub's `on:` is a YAML 1.1 boolean. This parser is 1.2, where it stays the
+  // string "on" — but read both. If a schema change ever made every workflow
+  // look triggerless, this check would pass while gating nothing.
+  const triggers = doc?.on ?? doc?.[true];
+  if (!triggers || !("pull_request" in triggers)) return [];
+
+  return Object.entries(doc.jobs ?? {}).flatMap(([key, job]) => {
+    // GitHub falls back to the job key when a job declares no `name`.
+    const name = job?.name ?? key;
+    if (!String(name).includes("${{")) return [name];
+
+    const matrix = job?.strategy?.matrix?.node;
+    if (!Array.isArray(matrix)) {
+      failures.push(`${path}: job name "${name}" interpolates a matrix that could not be read`);
+      return [];
+    }
+    return matrix.map((value) =>
+      String(name).replaceAll(/\$\{\{\s*matrix\.node\s*\}\}/g, String(value)),
+    );
+  });
+};
+
+const ciJobs = jobNamesOf(".github/workflows/ci.yml");
+
+const produced = new Set(
+  readdirSync(new URL("../.github/workflows", import.meta.url))
+    .filter((file) => file.endsWith(".yml") || file.endsWith(".yaml"))
+    .flatMap((file) => jobNamesOf(`.github/workflows/${file}`)),
+);
+
 const ruleset = read(".github/rulesets/main.json");
+const required = (
+  ruleset.rules?.find((rule) => rule.type === "required_status_checks")?.parameters
+    ?.required_status_checks ?? []
+).map((check) => check.context);
 
-const nameTemplate = ci.match(/^\s{4}name:\s*(.+)$/m)?.[1]?.trim();
-const matrixValues = ci
-  .match(/^\s*node:\s*\[([^\]]+)\]/m)?.[1]
-  .split(",")
-  .map((value) => value.trim().replace(/^['"]|['"]$/g, ""));
+expect(ciJobs.length > 0, "could not read any job name from .github/workflows/ci.yml");
 
-if (!nameTemplate || !matrixValues) {
-  failures.push("could not read the CI job name or its node matrix from .github/workflows/ci.yml");
-} else {
-  const expected = matrixValues
-    .map((value) => nameTemplate.replace(/\$\{\{\s*matrix\.node\s*\}\}/, value))
-    .sort();
-
-  const required = (
-    ruleset.rules?.find((rule) => rule.type === "required_status_checks")?.parameters
-      ?.required_status_checks ?? []
-  )
-    .map((check) => check.context)
-    .sort();
-
+for (const context of required) {
   expect(
-    JSON.stringify(expected) === JSON.stringify(required),
-    `ruleset required checks [${required.join(", ")}] do not match the CI jobs [${expected.join(", ")}] — ` +
+    produced.has(context),
+    `ruleset requires "${context}" but no pull_request workflow produces it — ` +
       "a PR gated on a check that never reports can never merge",
   );
 }
+
+for (const job of ciJobs) {
+  expect(
+    required.includes(job),
+    `CI produces "${job}" but the ruleset does not require it — that leg is free to fail a PR`,
+  );
+}
+
+// --- Server identity in source vs the manifests ----------------------------
+//
+// SERVER_VERSION is what the server reports over the MCP handshake, so a stale
+// value misreports the version to every connected client while every manifest
+// check still passes. RELEASING.md used to call this "three places"; it is four,
+// and this is the one nothing was watching.
+
+const constants = text("src/constants.ts");
+const literal = (name) => new RegExp(`export const ${name} = "([^"]+)"`).exec(constants)?.[1];
+
+const serverName = literal("SERVER_NAME");
+const serverVersion = literal("SERVER_VERSION");
+
+expect(
+  serverName !== undefined && serverVersion !== undefined,
+  "could not read SERVER_NAME / SERVER_VERSION from src/constants.ts",
+);
+expect(
+  serverVersion === undefined || serverVersion === pkg.version,
+  `src/constants.ts SERVER_VERSION (${serverVersion}) !== package.json version (${pkg.version}) — ` +
+    "the handshake would report a version nothing else agrees with",
+);
+expect(
+  serverName === undefined || serverName === pkg.name,
+  `src/constants.ts SERVER_NAME (${serverName}) !== package.json name (${pkg.name})`,
+);
 
 // --- Declared floors vs installed versions ---------------------------------
 //
@@ -109,7 +168,11 @@ const floorOf = (range) => {
 };
 
 const compareVersions = (a, b) => {
-  const parts = (v) => v.split("-")[0].split(".").map((n) => Number(n) || 0);
+  const parts = (v) =>
+    v
+      .split("-")[0]
+      .split(".")
+      .map((n) => Number(n) || 0);
   const [x, y] = [parts(a), parts(b)];
   for (let i = 0; i < 3; i += 1) {
     if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0) ? -1 : 1;
@@ -145,5 +208,8 @@ if (failures.length) {
 }
 
 console.log(`✓ package.json and server.json agree — ${server.name}@${server.version}`);
-console.log(`✓ ruleset requires exactly the checks CI produces`);
+console.log(`✓ src/constants.ts reports ${serverName}@${serverVersion}`);
+console.log(
+  `✓ ruleset requires ${required.length} check(s), all produced on PRs; every CI leg is gated`,
+);
 console.log(`✓ ${checked} dependency floors match their installed versions`);
