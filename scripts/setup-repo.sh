@@ -136,5 +136,5 @@ cat <<'NEXT'
 
   The API response does not prove the required checks were named correctly.
   To be sure, open a throwaway PR and confirm it stays blocked until
-  "Node 22" and "Node 24" report green.
+  "Node 24" and "Node 26" report green.
 NEXT

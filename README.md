@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rrvrs/jira-alerts-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/rrvrs/jira-alerts-mcp/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%E2%89%A522-brightgreen.svg)](https://nodejs.org)
+[![Node](https://img.shields.io/badge/node-%E2%89%A524-brightgreen.svg)](https://nodejs.org)
 
 An MCP server for the **Jira Service Management Operations** REST API — alerts and on-call.
 
@@ -59,7 +59,7 @@ These are the things that silently break naive integrations, so they are stated 
 
 ## Setup
 
-Requires **Node ≥ 22**.
+Requires **Node ≥ 24**.
 
 ```bash
 git clone https://github.com/rrvrs/jira-alerts-mcp.git

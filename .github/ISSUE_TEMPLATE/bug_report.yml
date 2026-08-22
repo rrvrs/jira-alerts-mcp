@@ -70,7 +70,7 @@ body:
     id: node
     attributes:
       label: Node version
-      description: Output of `node -v`. The server requires Node 22 or newer.
+      description: Output of `node -v`. The server requires Node 24 or newer.
       placeholder: v22.11.0
     validations:
       required: true

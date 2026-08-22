@@ -20,7 +20,8 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read
+      # Write, because the last step creates the GitHub Release for this tag.
+      contents: write
       # Required for npm trusted publishing (OIDC) and for the provenance
       # attestation. No NPM_TOKEN secret is involved.
       id-token: write
@@ -28,11 +29,27 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # Pinned to 24 deliberately, and not tied to the `engines` floor: trusted
+      # publishing needs npm >= 11.5.1, and a Node major bundles the npm of its
+      # era. Node 22 ships npm 10, which predates the OIDC handshake entirely.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '22'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
           cache: npm
+
+      # An npm too old for OIDC does not say so. It fails the handshake, gets
+      # treated as an anonymous user, and anonymous users cannot PUT — so the
+      # release dies on a bare 404 that points nowhere near the cause. Fail
+      # here instead, where the message names the problem.
+      - name: Verify npm can use trusted publishing
+        run: |
+          min=11.5.1; cur="$(npm --version)"
+          if [ "$(printf '%s\n%s\n' "$min" "$cur" | sort -V | head -1)" != "$min" ]; then
+            echo "::error::npm $cur is older than $min — the OIDC handshake would fail as a misleading 404"
+            exit 1
+          fi
+          echo "npm $cur"
 
       - run: npm ci
 
@@ -64,5 +81,24 @@ jobs:
             exit 1
           fi
 
+      # Skip rather than fail when the version is already up. Publishes cannot
+      # be undone, so a release that fails *after* the publish must be safe to
+      # re-run; and the very first release was bootstrapped by hand, because
+      # trusted publishing cannot be configured for a package that does not
+      # exist yet. The tag-vs-package.json check above already catches the
+      # mistake this would otherwise have caught — forgetting to bump.
       - name: Publish
-        run: npm publish
+        run: |
+          ver="$(node -p 'require("./package.json").version')"
+          if npm view "jira-alerts-mcp@$ver" version >/dev/null 2>&1; then
+            echo "::notice::$ver is already on the registry; skipping publish"
+            exit 0
+          fi
+          npm publish
+
+      # --verify-tag refuses to invent a release for a tag that is not there.
+      # Notes are grouped by PR label per .github/release.yml.
+      - name: Create the GitHub Release
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
