@@ -8,7 +8,7 @@ Thanks for taking an interest. This is a small, focused MCP server — the bar f
 
 ## Getting set up
 
-Requires **Node ≥ 22**.
+Requires **Node ≥ 24**.
 
 ```bash
 git clone https://github.com/rrvrs/jira-alerts-mcp.git
@@ -29,7 +29,7 @@ Then:
 | `npm run build` | Compiles to `dist/` |
 | `npm run inspect` | MCP Inspector against `dist/index.js` — needs credentials |
 
-CI runs lint, typecheck, test, and build on Node 22 and 24, plus CodeQL. All of them must pass — the `main` ruleset gates merges on them.
+CI runs lint, typecheck, test, and build on Node 24 and 26, plus CodeQL. All of them must pass — the `main` ruleset gates merges on them.
 
 ## Verifying against a real tenant
 
@@ -125,8 +125,8 @@ The ruleset therefore lists the repository admin role in `bypass_actors`. The
 rule is still fully enforced for outside contributors, which is its purpose.
 When a second maintainer joins, delete that array.
 
-**The required checks are named after the CI job.** They are `Node 22` and
-`Node 24`, produced by `name: Node ${{ matrix.node }}` expanding over the
+**The required checks are named after the CI job.** They are `Node 24` and
+`Node 26`, produced by `name: Node ${{ matrix.node }}` expanding over the
 matrix in [`ci.yml`](.github/workflows/ci.yml). Rename that job and the ruleset
 waits forever on checks that no longer report — every PR blocks, and nothing in
 the diff explains why. `npm run check:manifests` compares the two and fails on

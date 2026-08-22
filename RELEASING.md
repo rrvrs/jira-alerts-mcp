@@ -54,27 +54,61 @@ must contain no `*.test.js` and no `test-support.*` — CI checks this too.
 ## 3. Tag, and let CI publish
 
 ```bash
-git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0
+git tag -a v1.0.1 -m "v1.0.1" && git push origin v1.0.1
 ```
 
 That is the whole npm release. `.github/workflows/release.yml` fires on the tag,
 re-runs lint, typecheck, test, build and `check:manifests` on a clean checkout,
-verifies the tag matches `package.json` `version`, and publishes.
+verifies the tag matches `package.json` `version`, publishes, and creates the
+GitHub Release with notes grouped by PR label per `.github/release.yml`.
 
-Two things this buys over the old local `npm publish`. What ships is exactly the
-tagged commit, rather than whatever happened to be in a working directory. And
-the package carries a **provenance attestation** linking it to this repository
-and that workflow run, which a local publish cannot produce.
+Three things this buys over the old local `npm publish`. What ships is exactly
+the tagged commit, rather than whatever happened to be in a working directory.
+The package carries a **provenance attestation** linking it to this repository
+and that workflow run, which a local publish cannot produce. And the two
+artifacts can no longer drift apart, because one push makes both.
+
+The publish step is **idempotent**: if the version is already on the registry it
+logs a notice and skips. Publishes cannot be undone, so a release that fails
+after the publish has to be safe to re-run. The tag-vs-`package.json` check
+still catches the mistake this would otherwise have caught — forgetting to bump.
 
 Publishing uses npm **trusted publishing** over OIDC, so there is no `NPM_TOKEN`
-secret to leak or rotate. It has to be enabled once, on npmjs.com, for the
-`jira-alerts-mcp` package: point it at this repository and
-`.github/workflows/release.yml`. Until that is configured the publish step will
-fail — that is the expected first-release stumble, and it is a settings change,
-not a code change.
+secret to leak or rotate. Two things it quietly depends on:
 
-Verify at `https://www.npmjs.com/package/jira-alerts-mcp`, which should now show
-a "Provenance" panel.
+- **The job pins Node 24, and not the `engines` floor.** Trusted publishing
+  needs npm ≥ 11.5.1, and each Node major bundles the npm of its era — Node 22
+  ships npm 10.9.8, which predates the OIDC handshake. An npm that cannot do the
+  handshake is treated as an anonymous user, and anonymous users cannot `PUT`,
+  so it surfaces as a bare `404`/`ENEEDAUTH` pointing nowhere near the cause.
+  A guard step asserts the version and says so plainly.
+- **The trusted publisher must be configured on npmjs.com** for the
+  `jira-alerts-mcp` package, pointing at this repository and `release.yml`.
+  Every field is case-sensitive, filename extension included, and npm also
+  checks `package.json` `repository.url` against the repo. Inspect it with
+  `npm trust list jira-alerts-mcp`.
+
+Verify at `https://www.npmjs.com/package/jira-alerts-mcp`, which should show a
+"Provenance" panel for the new version.
+
+### First release only — how the package got created
+
+Trusted publishing is a **per-package** setting, so it cannot be configured for
+a package that does not exist yet, and npm has no "pending publisher" flow the
+way PyPI does. The package must exist to configure OIDC, and OIDC must be
+configured to publish.
+
+1.0.0 broke that circle by hand: a single local `npm publish --no-provenance`
+claimed the name, then
+
+```bash
+npm trust github jira-alerts-mcp --file release.yml --repo rrvrs/jira-alerts-mcp --allow-publish
+```
+
+configured the publisher for everything after it. That is why **1.0.0 is the one
+version with no provenance attestation**, and why it is the only version ever
+published from a laptop. Nothing here needs repeating; it is recorded so the
+gap in 1.0.0 is not later mistaken for a fault.
 
 ## 4. Publish to the MCP Registry
 
