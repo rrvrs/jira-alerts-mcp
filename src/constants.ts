@@ -25,4 +25,4 @@ export const MAX_LIMIT = 100;
 
 /** Server identity reported over the MCP handshake. */
 export const SERVER_NAME = "jira-alerts-mcp";
-export const SERVER_VERSION = "1.0.2";
+export const SERVER_VERSION = "1.0.3";

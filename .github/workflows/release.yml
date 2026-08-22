@@ -102,26 +102,32 @@ jobs:
       # NOT an install route: GitHub Packages requires a personal access token
       # even for public packages, which is why README.md sends people to npmjs.
       #
-      # Two awkward parts, both forced. The scope has to match the repo owner,
-      # so the mirror cannot carry the npmjs name — renaming here is safe
-      # because the npmjs publish above has already happened and package.json is
-      # a build artifact from this point on. And provenance is an npmjs feature,
-      # so the attestation is off; the npmjs copy is the one that carries it.
-      #
-      # Appending to $NPM_CONFIG_USERCONFIG rather than running setup-node again,
-      # which would overwrite the npmjs auth the steps above rely on.
+      # Re-running setup-node is the documented way to authenticate against a
+      # second registry, and it is what writes both halves of the config npm
+      # needs: the scope-to-registry mapping and the _authToken line keyed to
+      # NODE_AUTH_TOKEN. Hand-appending the token line alone is what failed in
+      # v1.0.2 with ENEEDAUTH. Safe here only because every npmjs step has
+      # already run — this overwrites the npmjs auth it depends on.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@rrvrs'
+
+      # The scope has to match the repo owner, so the mirror cannot carry the
+      # npmjs name. Renaming here is safe: package.json is a build artifact from
+      # this point on. Provenance is npmjs-only, hence --no-provenance.
       - name: Mirror to GitHub Packages
         run: |
           ver="$(node -p 'require("./package.json").version')"
-          echo "//npm.pkg.github.com/:_authToken=${GH_TOKEN}" >> "$NPM_CONFIG_USERCONFIG"
-          if npm view "@rrvrs/jira-alerts-mcp@$ver" version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
+          if npm view "@rrvrs/jira-alerts-mcp@$ver" version >/dev/null 2>&1; then
             echo "::notice::@rrvrs/jira-alerts-mcp@$ver is already mirrored; skipping"
             exit 0
           fi
           npm pkg set name="@rrvrs/jira-alerts-mcp"
-          npm publish --registry=https://npm.pkg.github.com --no-provenance
+          npm publish --no-provenance
         env:
-          GH_TOKEN: ${{ github.token }}
+          NODE_AUTH_TOKEN: ${{ github.token }}
 
       # Last, so the announcement only exists once both artifacts are out.
       # --verify-tag refuses to invent a release for a tag that is not there.
