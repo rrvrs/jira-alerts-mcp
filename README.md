@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/rrvrs/jira-alerts-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/rrvrs/jira-alerts-mcp/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![npm](https://img.shields.io/npm/v/jira-alerts-mcp.svg)](https://www.npmjs.com/package/jira-alerts-mcp)
 [![Node](https://img.shields.io/badge/node-%E2%89%A524-brightgreen.svg)](https://nodejs.org)
 
 An MCP server for the **Jira Service Management Operations** REST API — alerts and on-call.
@@ -61,6 +62,15 @@ These are the things that silently break naive integrations, so they are stated 
 
 Requires **Node ≥ 24**.
 
+Nothing to clone or build — your MCP client runs the published package directly:
+
+```bash
+npx jira-alerts-mcp
+```
+
+Clone instead only to work on the server itself, or to run a revision that has
+not been released:
+
 ```bash
 git clone https://github.com/rrvrs/jira-alerts-mcp.git
 cd jira-alerts-mcp
@@ -96,10 +106,17 @@ claude mcp add jsm-alerts \
   --env JSM_CLOUD_ID='your-cloud-id' \
   --env JSM_EMAIL='you@example.com' \
   --env JSM_API_TOKEN="${JSM_API_TOKEN}" \
+  -- npx -y jira-alerts-mcp
+```
+
+Working on the server? Point it at your build instead, so edits take effect
+without republishing:
+
+```bash
   -- node /absolute/path/to/jira-alerts-mcp/dist/index.js
 ```
 
-Two things that catch people out: the server name is the first positional argument, before any flags; and in zsh `${VAR}` needs quoting. For GUI-launched sessions the token has to live in the `env` block of `~/.claude/settings.json` — the shell environment isn't inherited.
+Three things that catch people out: the server name is the first positional argument, before any flags; `-y` on `npx` skips the install prompt, which an MCP client has no way to answer; and in zsh `${VAR}` needs quoting. For GUI-launched sessions the token has to live in the `env` block of `~/.claude/settings.json` — the shell environment isn't inherited.
 
 ### Testing
 
