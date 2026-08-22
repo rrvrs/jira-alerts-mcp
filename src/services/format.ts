@@ -29,10 +29,7 @@ export type ToolResult = {
 };
 
 /** Success envelope: text for the model to read, structured data for the client. */
-export function ok(
-  text: string,
-  structured?: Record<string, unknown>,
-): ToolResult {
+export function ok(text: string, structured?: Record<string, unknown>): ToolResult {
   return {
     content: [{ type: "text", text }],
     ...(structured ? { structuredContent: structured } : {}),
@@ -62,8 +59,7 @@ export function withCharacterLimit<T>(
   }
 
   if (kept < items.length) {
-    text +=
-      `\n\n_Truncated: showing ${kept} of ${items.length} records to stay within the response size limit. ${hint}_`;
+    text += `\n\n_Truncated: showing ${kept} of ${items.length} records to stay within the response size limit. ${hint}_`;
     return { text, truncated: true, kept };
   }
 
@@ -121,12 +117,7 @@ export function buildPagination({
  * structuredContent. An empty page is an ordinary answer, not an error, so it
  * has to ship a valid — but empty — structured payload.
  */
-export function emptyResult(
-  text: string,
-  key: string,
-  limit: number,
-  offset?: number,
-): ToolResult {
+export function emptyResult(text: string, key: string, limit: number, offset?: number): ToolResult {
   return ok(text, {
     [key]: [],
     pagination: buildPagination({ returned: 0, fetched: 0, limit, offset }),
@@ -136,7 +127,9 @@ export function emptyResult(
 function timestamp(value?: string): string {
   if (!value) return "unknown";
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString().replace("T", " ").replace(".000Z", "Z");
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toISOString().replace("T", " ").replace(".000Z", "Z");
 }
 
 function alertStateLabel(alert: Alert): string {
@@ -182,7 +175,9 @@ export function renderAlertDetail(alert: Alert): string {
   if (alert.alias) lines.push(`- **Alias**: \`${alert.alias}\``);
   if (alert.entity) lines.push(`- **Entity**: ${alert.entity}`);
   if (alert.integration?.name)
-    lines.push(`- **Integration**: ${alert.integration.name}${alert.integration.type ? ` (${alert.integration.type})` : ""}`);
+    lines.push(
+      `- **Integration**: ${alert.integration.name}${alert.integration.type ? ` (${alert.integration.type})` : ""}`,
+    );
   if (alert.tags?.length) lines.push(`- **Tags**: ${alert.tags.join(", ")}`);
 
   const responders = [...(alert.responders ?? []), ...(alert.teams ?? [])]
@@ -213,7 +208,10 @@ export function renderAlertDetail(alert: Alert): string {
 export function renderNotes(notes: AlertNote[]): string {
   if (!notes.length) return "No notes on this alert.";
   return notes
-    .map((n) => `- **${timestamp(n.createdAt)}** — ${n.owner ?? "unknown"}\n  ${n.note.replace(/\n/g, "\n  ")}`)
+    .map(
+      (n) =>
+        `- **${timestamp(n.createdAt)}** — ${n.owner ?? "unknown"}\n  ${n.note.replace(/\n/g, "\n  ")}`,
+    )
     .join("\n");
 }
 
@@ -257,9 +255,7 @@ export function renderOnCall(data: OnCallData, next: boolean): string {
   const recipients = next ? data.nextOnCallRecipients : data.onCallRecipients;
   const participants = next ? data.nextOnCallParticipants : data.onCallParticipants;
 
-  const names = recipients?.length
-    ? recipients
-    : flattenParticipants(participants ?? []);
+  const names = recipients?.length ? recipients : flattenParticipants(participants ?? []);
 
   const heading = next
     ? `# Next on-call for ${scheduleName}`
@@ -302,7 +298,6 @@ export function renderFormat(
   markdown: string,
   structured: Record<string, unknown>,
 ): ToolResult {
-  const text =
-    format === ResponseFormat.JSON ? JSON.stringify(structured, null, 2) : markdown;
+  const text = format === ResponseFormat.JSON ? JSON.stringify(structured, null, 2) : markdown;
   return ok(text, structured);
 }

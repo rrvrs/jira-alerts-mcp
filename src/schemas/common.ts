@@ -36,7 +36,9 @@ export const offsetField = z
   .int()
   .min(0)
   .default(0)
-  .describe("Number of records to skip, for paging. Use the 'next_offset' from a previous response.");
+  .describe(
+    "Number of records to skip, for paging. Use the 'next_offset' from a previous response.",
+  );
 
 /**
  * Alert identifier. The JSM Ops API is strict here: /v1/alerts/{id} accepts

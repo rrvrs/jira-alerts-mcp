@@ -101,8 +101,7 @@ if (!nameTemplate || !matrixValues) {
 // and this is the one nothing was watching.
 
 const constants = text("src/constants.ts");
-const literal = (name) =>
-  new RegExp(`export const ${name} = "([^"]+)"`).exec(constants)?.[1];
+const literal = (name) => new RegExp(`export const ${name} = "([^"]+)"`).exec(constants)?.[1];
 
 const serverName = literal("SERVER_NAME");
 const serverVersion = literal("SERVER_VERSION");
@@ -137,7 +136,11 @@ const floorOf = (range) => {
 };
 
 const compareVersions = (a, b) => {
-  const parts = (v) => v.split("-")[0].split(".").map((n) => Number(n) || 0);
+  const parts = (v) =>
+    v
+      .split("-")[0]
+      .split(".")
+      .map((n) => Number(n) || 0);
   const [x, y] = [parts(a), parts(b)];
   for (let i = 0; i < 3; i += 1) {
     if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0) ? -1 : 1;
