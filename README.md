@@ -71,6 +71,11 @@ Developer → **Edit Config**. That creates the file if it doesn't exist yet:
 }
 ```
 
+`mcpServers` is a **top-level key**, and the file holds every server you have
+configured. If it already has an `mcpServers` block, add `jira-alerts-mcp` as
+another entry inside it — pasting the whole block above over the file replaces
+whatever was already there.
+
 Then **quit Claude Desktop completely and reopen it** — the file is read only at
 startup, and closing the window is not quitting. The server then appears under
 the connectors panel in the message composer.
