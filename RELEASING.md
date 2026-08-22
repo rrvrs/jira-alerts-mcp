@@ -6,8 +6,9 @@ and verifies that the package really is the server it claims to be. So the
 npm publish has to land first; there is nothing for the registry to check
 until it does.
 
-Both publishes require credentials and neither can be undone. They are the
-maintainer's to run.
+Neither publish can be undone. The npm half now runs in CI off a version tag,
+so the credential that used to live on a maintainer's machine is gone; the
+registry half is still a maintainer running a command.
 
 ## 1. Bump the version
 
@@ -35,10 +36,10 @@ grants. CI runs it on every push. A mismatch caught here is a minor edit; the
 same mismatch caught at publish time arrives as `Registry validation failed for
 package`, after the npm release has already gone out.
 
-## 2. Check the build
+## 2. Check the build locally
 
 ```bash
-npm run typecheck && npm test && npm run build
+npm ci && npm run lint && npm run typecheck && npm test && npm run build
 ```
 
 Then confirm the tarball contains what you expect and nothing more:
@@ -50,44 +51,50 @@ npm pack --dry-run
 `files` is `["dist"]`, so tests, sources and `.env.example` stay out. `dist/`
 must contain no `*.test.js` and no `test-support.*` — CI checks this too.
 
-## 3. Publish to npm
+## 3. Tag, and let CI publish
 
 ```bash
-npm publish --access public
+git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0
 ```
 
-Verify at `https://www.npmjs.com/package/jira-alerts-mcp`.
+That is the whole npm release. `.github/workflows/release.yml` fires on the tag,
+re-runs lint, typecheck, test, build and `check:manifests` on a clean checkout,
+verifies the tag matches `package.json` `version`, and publishes.
+
+Two things this buys over the old local `npm publish`. What ships is exactly the
+tagged commit, rather than whatever happened to be in a working directory. And
+the package carries a **provenance attestation** linking it to this repository
+and that workflow run, which a local publish cannot produce.
+
+Publishing uses npm **trusted publishing** over OIDC, so there is no `NPM_TOKEN`
+secret to leak or rotate. It has to be enabled once, on npmjs.com, for the
+`jira-alerts-mcp` package: point it at this repository and
+`.github/workflows/release.yml`. Until that is configured the publish step will
+fail — that is the expected first-release stumble, and it is a settings change,
+not a code change.
+
+Verify at `https://www.npmjs.com/package/jira-alerts-mcp`, which should now show
+a "Provenance" panel.
 
 ## 4. Publish to the MCP Registry
 
+Still manual, and deliberately so: `mcp-publisher` authenticates with a GitHub
+device-code flow that cannot run unattended.
+
 ```bash
 brew install mcp-publisher
-```
-
-```bash
 mcp-publisher login github
-```
-
-Device-code flow: it prints a code, you authorize at
-`https://github.com/login/device`. The GitHub account must own the `rrvrs`
-namespace — that is what entitles this server to the `io.github.rrvrs/` prefix.
-
-```bash
 mcp-publisher publish
 ```
 
-It reads `server.json` from the working directory.
+The GitHub account must own the `rrvrs` namespace — that is what entitles this
+server to the `io.github.rrvrs/` prefix. `mcp-publisher` reads `server.json`
+from the working directory.
 
 ## 5. Verify the listing
 
 ```bash
 curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=jira-alerts-mcp"
-```
-
-## 6. Tag
-
-```bash
-git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0
 ```
 
 ## After the first successful npm publish
