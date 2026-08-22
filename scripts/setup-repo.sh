@@ -28,7 +28,9 @@ TOPICS=(
 )
 
 DRY_RUN=false
-HOMEPAGE=""
+# The About sidebar's Website field. Defaults to the npm package rather than
+# living in a flag someone has to remember; --homepage still overrides it.
+HOMEPAGE="https://www.npmjs.com/package/jira-alerts-mcp"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

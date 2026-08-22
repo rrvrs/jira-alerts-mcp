@@ -42,6 +42,14 @@ npm run inspect
 
 Start with `jsm_list_schedules`. It needs no ids and confirms auth, scopes, and team visibility in one call. If it returns an empty list rather than an error, the credentials are valid but the account can't see the team's Operations page.
 
+### Endpoint verification status
+
+Paths were checked against the [JSM ops REST API reference](https://developer.atlassian.com/cloud/jira/service-desk-ops/rest/v2/api-group-alerts/) rather than assumed. Which ones rest on firmer ground matters when a call misbehaves:
+
+- **Confirmed in the published docs**: `/v1/alerts`, `/v1/alerts/{id}`, `/v1/alerts/alias`, `/v1/alerts/requests/{id}`, `/v1/alerts/{id}/acknowledge`, `/v1/alerts/{id}/close`, `/v1/alerts/{id}/responders`, `/v1/alerts/{id}/notes`, `/v1/schedules/{id}/on-calls`, `/v1/schedules/{id}/next-on-calls`.
+- **Opsgenie parity, worth confirming on first run**: `GET /v1/alerts/{id}/logs`, and the exact query parameters for note/log paging (`order`, `offset` cursor). JSM Operations is a rehost of the Opsgenie API and these are unchanged there, but the docs site renders client-side and could not be read end to end.
+- **Collection envelope**: Atlassian is inconsistent about whether collections come back under `data` or `values`. `JsmClient.getCollection` accepts both and normalises, so this needs no change either way — but if a list tool returns zero items against data you know exists, that normaliser is the first thing to inspect.
+
 ## Conventions worth preserving
 
 Three things in this codebase are load-bearing. Changing them by accident is the most likely way to break the server subtly.
