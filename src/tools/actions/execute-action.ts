@@ -9,7 +9,7 @@
  * have landed when they have not.
  */
 
-import { JsmClient, handleApiError } from "../../services/client.js";
+import { type JsmClient, handleApiError } from "../../services/client.js";
 import { fail, ok, renderAsyncReceipt, type ToolResult } from "../../services/format.js";
 import type { AsyncActionResponse } from "../../types.js";
 

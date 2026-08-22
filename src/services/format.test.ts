@@ -154,7 +154,12 @@ describe("buildPagination", () => {
   });
 
   it("omits offset and next_offset for cursor-paged endpoints", () => {
-    const meta = buildPagination({ returned: 20, fetched: 20, limit: 20, nextCursor: "cursor-abc" });
+    const meta = buildPagination({
+      returned: 20,
+      fetched: 20,
+      limit: 20,
+      nextCursor: "cursor-abc",
+    });
     assert.equal("offset" in meta, false);
     assert.equal("next_offset" in meta, false);
     assert.equal(meta.next_cursor, "cursor-abc");
@@ -170,7 +175,10 @@ describe("buildPagination", () => {
       buildPagination({ returned: 5, fetched: 5, limit: 20, offset: 0, totalCount: 137 }).total,
       137,
     );
-    assert.equal("total" in buildPagination({ returned: 5, fetched: 5, limit: 20, offset: 0 }), false);
+    assert.equal(
+      "total" in buildPagination({ returned: 5, fetched: 5, limit: 20, offset: 0 }),
+      false,
+    );
   });
 });
 
@@ -183,8 +191,10 @@ describe("emptyResult", () => {
   });
 
   it("reports an empty page as the end of the results", () => {
-    const meta = emptyResult("none", "schedules", 20, 0).structuredContent
-      ?.pagination as Record<string, unknown>;
+    const meta = emptyResult("none", "schedules", 20, 0).structuredContent?.pagination as Record<
+      string,
+      unknown
+    >;
     assert.equal(meta.count, 0);
     assert.equal(meta.has_more, false);
     assert.equal("next_offset" in meta, false);
@@ -297,7 +307,10 @@ describe("renderAlertDetail", () => {
   it("flattens responders and teams into one line, preferring name over id", () => {
     const detail = renderAlertDetail({
       ...baseAlert,
-      responders: [{ id: "u1", name: "Ada" }, { id: "u2", username: "grace@example.com" }],
+      responders: [
+        { id: "u1", name: "Ada" },
+        { id: "u2", username: "grace@example.com" },
+      ],
       teams: [{ id: "t1", name: "Platform" }],
     });
     assert.match(detail, /\*\*Responders\*\*: Ada, grace@example\.com, Platform/);
@@ -422,7 +435,10 @@ describe("renderOnCall", () => {
   });
 
   it("falls back to a generic heading when the schedule name is missing", () => {
-    assert.match(renderOnCall({ onCallRecipients: ["a"] }, false), /Currently on-call for schedule/);
+    assert.match(
+      renderOnCall({ onCallRecipients: ["a"] }, false),
+      /Currently on-call for schedule/,
+    );
   });
 });
 

@@ -8,7 +8,7 @@
  * Both are scoped by JSM_CLOUD_ID, which identifies the Atlassian site.
  */
 
-import axios, { AxiosError, AxiosInstance } from "axios";
+import axios, { type AxiosError, type AxiosInstance } from "axios";
 import { API_ROOT, REQUEST_TIMEOUT_MS } from "../constants.js";
 import type { Paged } from "../types.js";
 
@@ -53,16 +53,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): JsmConfig {
 export class JsmClient {
   private readonly http: AxiosInstance;
 
-  constructor(private readonly config: JsmConfig) {
+  constructor(config: JsmConfig) {
     this.http = axios.create({
       baseURL: `${API_ROOT}/${config.cloudId}`,
       timeout: REQUEST_TIMEOUT_MS,
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        ...(config.oauthToken
-          ? { Authorization: `Bearer ${config.oauthToken}` }
-          : {}),
+        ...(config.oauthToken ? { Authorization: `Bearer ${config.oauthToken}` } : {}),
       },
       ...(config.oauthToken
         ? {}
@@ -95,27 +93,20 @@ export class JsmClient {
    * endpoints and under `values` on newer ones. Rather than guess per
    * endpoint, accept both and expose a single shape to the tools.
    */
-  async getCollection<T>(
-    path: string,
-    params?: Record<string, unknown>,
-  ): Promise<Paged<T>> {
+  async getCollection<T>(path: string, params?: Record<string, unknown>): Promise<Paged<T>> {
     const raw = await this.request<Record<string, unknown>>("GET", path, {
       params,
     });
 
     const items = (raw.data ?? raw.values ?? []) as T[];
     const paging = (raw.paging ?? raw.links) as Paged<T>["paging"] | undefined;
-    const totalCount =
-      typeof raw.totalCount === "number" ? raw.totalCount : undefined;
+    const totalCount = typeof raw.totalCount === "number" ? raw.totalCount : undefined;
 
     return { items: Array.isArray(items) ? items : [], paging, totalCount };
   }
 
   /** GET for endpoints returning a single object under `data`/`values`. */
-  async getOne<T>(
-    path: string,
-    params?: Record<string, unknown>,
-  ): Promise<T> {
+  async getOne<T>(path: string, params?: Record<string, unknown>): Promise<T> {
     const raw = await this.request<Record<string, unknown>>("GET", path, {
       params,
     });
