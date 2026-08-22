@@ -34,7 +34,9 @@ https://<your-site>.atlassian.net/_edgeAuth/tenantInfo
 **2. Create an API token** at
 [id.atlassian.com](https://id.atlassian.com/manage-profile/security/api-tokens).
 
-**3. Add the server.** For Claude Code:
+**3. Add the server.**
+
+*Claude Code:*
 
 ```bash
 claude mcp add jira-alerts-mcp \
@@ -44,7 +46,14 @@ claude mcp add jira-alerts-mcp \
   -- npx -y jira-alerts-mcp
 ```
 
-Most other MCP clients take a JSON config of this shape:
+*Claude Desktop:* open the config from the app rather than by hand — the **Claude
+menu in your menu bar** (not the settings inside the window) → Settings →
+Developer → **Edit Config**. That creates the file if it doesn't exist yet:
+
+| OS | Path |
+|---|---|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
 
 ```json
 {
@@ -62,6 +71,17 @@ Most other MCP clients take a JSON config of this shape:
 }
 ```
 
+`mcpServers` is a **top-level key**, and the file holds every server you have
+configured. If it already has an `mcpServers` block, add `jira-alerts-mcp` as
+another entry inside it — pasting the whole block above over the file replaces
+whatever was already there.
+
+Then **quit Claude Desktop completely and reopen it** — the file is read only at
+startup, and closing the window is not quitting. The server then appears under
+the connectors panel in the message composer.
+
+Most other MCP clients accept that same JSON shape.
+
 **4. Check it works.** Ask your agent to list your open alerts. That runs
 `jsm_list_alerts`, which needs no ids and confirms your credentials and the
 `read:ops-alert` scope that eight of the twelve tools share.
@@ -71,11 +91,27 @@ check, because schedules need `read:ops-config` — if alerts work and schedules
 return 401, nothing is wrong with your token; see
 [Required scopes](#configuration) below.
 
-Three things that catch people out: with `claude mcp add` the server name is the
-first positional argument, before any flags; `-y` on `npx` skips the install
-prompt, which an MCP client has no way to answer; and in zsh `${VAR}` needs
-quoting. For GUI-launched sessions the token has to live in the `env` block of
-`~/.claude/settings.json` — the shell environment isn't inherited.
+Things that catch people out: with `claude mcp add` the server name is the first
+positional argument, before any flags; `-y` on `npx` skips the install prompt,
+which an MCP client has no way to answer; and in zsh `${VAR}` needs quoting. For
+GUI-launched sessions the token has to live in the `env` block of the config
+itself — the shell environment isn't inherited, which is why the JSON above
+carries the credentials inline.
+
+**If the server never shows up in Claude Desktop**, two causes account for
+almost all of it, and neither announces itself:
+
+- **`npx` wasn't on the PATH.** A GUI app is launched by the window manager, not
+  a shell, so a Node installed through nvm often isn't visible to it. Set
+  `"command"` to the absolute path from `which node` and point `"args"` at the
+  installed `dist/index.js`, or install Node system-wide. A Node older than 24
+  that *is* found fails as `EBADENGINE` rather than anything readable.
+- **The server exited during startup.** Credentials are validated before the
+  handshake, so a bad cloud id or token stops it dead — and because stdout is
+  the protocol channel, that message goes to stderr only. Claude Desktop keeps
+  it at `~/Library/Logs/Claude/mcp-server-jira-alerts-mcp.log` (Windows:
+  `%APPDATA%\Claude\logs\`), named after the key you used under `mcpServers`.
+  Look for `Startup failed:` — it names exactly what is wrong.
 
 <details>
 <summary><b>Came here from this repository's Packages panel?</b></summary>

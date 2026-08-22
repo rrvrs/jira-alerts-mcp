@@ -36,6 +36,7 @@ Schedules and on-call are a third, separate grant: `read:ops-config:jira-service
 
   Binding wide is still not sufficient on its own — put an authenticating reverse proxy in front of it.
 - **Credentials come from the environment, never from a file the server reads.** There is no `dotenv` dependency and `.env` is gitignored. `.env.example` contains placeholders only.
+- **A client config holding the token is still a credential at rest.** The distinction above is about the *server*: it reads only its environment. But a GUI client has no shell environment to inherit, so `claude_desktop_config.json` and the equivalents hold the token in plaintext, readable by anything running as that user. That file deserves the same care as any other secret on disk, and it is a further reason to give the server its own service account rather than a human's personal token.
 - **Alert content is untrusted input.** Alert messages, descriptions and notes are written by whatever integration fired them and are rendered into the model's context. Text inside an alert is data, not instructions — an agent acting on alerts should treat it that way.
 
 ## Out of scope
