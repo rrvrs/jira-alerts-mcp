@@ -140,16 +140,27 @@ export function handleApiError(error: unknown, context: string): string {
             `If you passed a search query, check the field names against the JSM alert search syntax ` +
             `(e.g. status:open, priority:P1, tag:"db"). Field names are case-sensitive.`
           );
+        // A missing scope surfaces here as 401, not 403, so this message must not
+        // send the reader off to rotate a credential that is working fine.
         case 401:
           return (
             `Error (${context}): authentication failed.${detail} ` +
-            `Verify JSM_EMAIL/JSM_API_TOKEN (or JSM_OAUTH_TOKEN) and that the token has not been revoked.`
+            `Either the credentials are wrong or revoked — check JSM_EMAIL/JSM_API_TOKEN (or ` +
+            `JSM_OAUTH_TOKEN) — or the token lacks the scope for this endpoint. Schedules and ` +
+            `on-call need read:ops-config:jira-service-management, a separate grant from ` +
+            `read:ops-alert:jira-service-management. To tell the two apart in one call: if ` +
+            `jsm_list_alerts succeeds and only schedule or on-call calls fail, the credentials are ` +
+            `fine and read:ops-config:jira-service-management is what is missing.`
           );
         case 403:
           return (
             `Error (${context}): permission denied.${detail} ` +
-            `The account needs Jira Service Management Operations access, and for write actions the ` +
-            `write:ops-alert:jira-service-management scope. Read-only Jira scopes are not sufficient.`
+            `The account needs Jira Service Management Operations access on the relevant team, plus ` +
+            `the scope for this endpoint: read:ops-alert:jira-service-management for alerts, ` +
+            `read:ops-config:jira-service-management for schedules and on-call, and both ` +
+            `read:ops-alert:jira-service-management and write:ops-alert:jira-service-management for ` +
+            `write actions — Atlassian requires the read scope alongside the write one. ` +
+            `Read-only Jira scopes are not sufficient.`
           );
         case 404:
           return (

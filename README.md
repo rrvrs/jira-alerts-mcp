@@ -62,9 +62,14 @@ Most other MCP clients take a JSON config of this shape:
 }
 ```
 
-**4. Check it works.** Ask your agent to list your on-call schedules. That runs
-`jsm_list_schedules`, which needs no ids and confirms auth, scopes and team
-visibility in a single call — if it returns schedules, you are set up correctly.
+**4. Check it works.** Ask your agent to list your open alerts. That runs
+`jsm_list_alerts`, which needs no ids and confirms your credentials and the
+`read:ops-alert` scope that eight of the twelve tools share.
+
+Then ask who is on call, which runs `jsm_list_schedules`. That is a **separate**
+check, because schedules need `read:ops-config` — if alerts work and schedules
+return 401, nothing is wrong with your token; see
+[Required scopes](#configuration) below.
 
 Three things that catch people out: with `claude mcp add` the server name is the
 first positional argument, before any flags; `-y` on `npx` skips the install
@@ -130,10 +135,25 @@ read `.env` itself — an MCP server is launched by its client, and the client o
 the environment. Use the file as a checklist for your client's `env` block, or
 `set -a; source .env; set +a` for local development.
 
-**Required scopes.** Read tools need `read:ops-alert:jira-service-management`;
-write tools need `write:ops-alert:jira-service-management`. Granting only the
-read scope is a supported configuration — the write tools will fail with a 403
-naming the missing scope.
+**Required scopes.** Alerts and on-call sit behind **different** scopes, which is
+the single most common setup mistake:
+
+| Tools | Scope |
+|---|---|
+| The 5 alert reads | `read:ops-alert:jira-service-management` |
+| The 4 alert writes | `read:ops-alert:…` **and** `write:ops-alert:…` — both |
+| `jsm_list_schedules`, `jsm_get_on_call`, `jsm_get_next_on_call` | `read:ops-config:jira-service-management` |
+
+Two consequences worth knowing before you mint a token:
+
+- **Writes need the read scope too.** A token carrying only
+  `write:ops-alert:jira-service-management` fails. Atlassian requires the read
+  scope alongside it on every write endpoint.
+- **`ops-config` is a separate grant, and a missing one returns 401, not 403.**
+  Omit it and the nine alert tools work perfectly while the three on-call tools
+  fail — which reads like a broken credential and is not one. Both are supported
+  configurations: granting only the read scopes, or only `ops-alert`, is a
+  deliberate way to narrow what the agent can reach.
 
 **Team visibility.** The account also needs JSM Operations access on the relevant
 team. Alerts and schedules hang off a team's Operations page, so credentials that

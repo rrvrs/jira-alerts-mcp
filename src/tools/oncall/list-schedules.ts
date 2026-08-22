@@ -33,7 +33,10 @@ Returns (json format):
 
 Examples:
   - "What on-call rotations do we have?" -> no args
-  - "Find the schedule id for the platform rotation" -> then match on name`,
+  - "Find the schedule id for the platform rotation" -> then match on name
+
+Error handling:
+  - HTTP 401 here while alert tools work means the token is missing read:ops-config:jira-service-management — schedules and on-call sit behind a different scope from alerts, so this is a scope gap, not a bad credential.`,
   inputSchema: listSchedulesShape,
   outputSchema: {
     schedules: z.array(z.object({ id: z.string(), name: z.string() }).passthrough()),
