@@ -110,6 +110,20 @@ version with no provenance attestation**, and why it is the only version ever
 published from a laptop. Nothing here needs repeating; it is recorded so the
 gap in 1.0.0 is not later mistaken for a fault.
 
+Two things that bootstrap trips over, worth knowing before repeating it for a
+second package:
+
+- **npm requires 2FA to publish at all.** With it off, the publish dies on a
+  `403` naming 2FA — after the tarball has been built and uploaded, so it looks
+  like a permissions problem rather than an account setting. Enable it first.
+  Once on at `auth-and-writes`, every write *including* `npm trust list` prompts
+  for a one-time password, so the bootstrap has to be run by a human at a
+  terminal. Trusted publishing is exempt: OIDC replaces the credential, which is
+  the point.
+- **`publishConfig.provenance` is overridden by `--no-provenance` on the CLI**,
+  which is what makes a local bootstrap possible at all. `--dry-run` does not
+  prove this either way, because npm skips provenance generation in a dry run.
+
 ## 4. Publish to the MCP Registry
 
 Still manual, and deliberately so: `mcp-publisher` authenticates with a GitHub
