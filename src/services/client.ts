@@ -34,7 +34,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): JsmConfig {
   const cloudId = env.JSM_CLOUD_ID?.trim();
   if (!cloudId) {
     throw new JsmConfigError(
-      "JSM_CLOUD_ID is required. Find it at https://<your-site>.atlassian.net/_edgeAuth/tenantInfo " +
+      "JSM_CLOUD_ID is required. Find it at https://<your-site>.atlassian.net/_edge/tenant_info " +
         "or via GET https://api.atlassian.com/oauth/token/accessible-resources.",
     );
   }
