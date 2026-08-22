@@ -91,6 +91,31 @@ secret to leak or rotate. Two things it quietly depends on:
 Verify at `https://www.npmjs.com/package/jira-alerts-mcp`, which should show a
 "Provenance" panel for the new version.
 
+### The GitHub Packages mirror
+
+A successful publish is followed by a second one, pushing
+`@rrvrs/jira-alerts-mcp` to `npm.pkg.github.com`. It exists for one reason: the
+repository's Packages panel reflects GitHub Packages, not npmjs, so without it
+the page reads "No packages published" no matter how many npm releases go out.
+
+Three things about it are deliberate and should not be "fixed":
+
+- **The name is scoped.** GitHub Packages requires the scope to match the repo
+  owner, so the mirror cannot carry the npmjs name. The workflow rewrites
+  `package.json` `name` immediately before that publish. This is safe only
+  because the npmjs publish has already happened by then — do not move the step
+  earlier.
+- **It carries no provenance.** Attestations are an npmjs feature. The npmjs
+  copy is the one with the Sigstore statement; the mirror having none is not a
+  regression.
+- **It is not an install route.** GitHub Packages requires a personal access
+  token even for public packages. `README.md` says so, in the section a visitor
+  arriving from the Packages panel will read first.
+
+Failure of this step leaves the npm release intact and the GitHub Release
+uncreated. Fix the step and re-run the workflow: the npm publish skips, and only
+the mirror retries.
+
 ### First release only — how the package got created
 
 Trusted publishing is a **per-package** setting, so it cannot be configured for

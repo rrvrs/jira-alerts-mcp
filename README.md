@@ -68,6 +68,16 @@ Nothing to clone or build — your MCP client runs the published package directl
 npx jira-alerts-mcp
 ```
 
+That is [`jira-alerts-mcp` on npmjs.com](https://www.npmjs.com/package/jira-alerts-mcp),
+installable anonymously, and it is the only supported install route.
+
+> **If you arrived from this repository's Packages panel**, you found
+> `@rrvrs/jira-alerts-mcp` on GitHub Packages. That is a mirror of the same
+> build, published so the panel is not empty. GitHub Packages requires a
+> personal access token even for public packages, so installing from it needs
+> auth that npmjs.com does not — use the command above instead. The two are
+> separate names on separate registries; nothing redirects between them.
+
 Clone instead only to work on the server itself, or to run a revision that has
 not been released:
 
