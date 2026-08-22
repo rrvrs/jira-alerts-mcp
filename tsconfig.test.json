@@ -1,0 +1,11 @@
+{
+  // The build tsconfig excludes tests so they stay out of dist/, and tsx strips
+  // types without checking them — which left the whole suite as unchecked
+  // TypeScript. This config exists purely to typecheck it; it emits nothing.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

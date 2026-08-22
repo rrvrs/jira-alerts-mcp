@@ -10,7 +10,7 @@
  * There is now one copy.
  */
 
-import { JsmClient, handleApiError } from "../services/client.js";
+import { type JsmClient, handleApiError } from "../services/client.js";
 import {
   buildPagination,
   emptyResult,

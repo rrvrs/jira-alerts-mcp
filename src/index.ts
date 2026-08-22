@@ -67,9 +67,10 @@ async function runHttp(client: JsmClient): Promise<void> {
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (error) {
-      // Express 4 does not catch rejections from async handlers. Without this,
-      // one bad request becomes an unhandled rejection, which Node treats as
-      // fatal — taking down every other client's connection with it.
+      // Express 5 forwards a rejected async handler to the error middleware on
+      // its own, so this catch is not what keeps a bad request from becoming a
+      // fatal unhandled rejection. It is here to close the transport and server
+      // before handing off — without it, a failed request leaks both.
       void transport.close();
       void server.close();
       next(error);
@@ -79,11 +80,14 @@ async function runHttp(client: JsmClient): Promise<void> {
   // Stateless mode supports POST only. Say so, rather than letting Express
   // return its default 404 HTML to a client probing for an SSE stream.
   app.all("/mcp", (_req, res) => {
-    res.status(405).set("Allow", "POST").json({
-      jsonrpc: "2.0",
-      error: { code: -32000, message: "Method not allowed. This endpoint accepts POST only." },
-      id: null,
-    });
+    res
+      .status(405)
+      .set("Allow", "POST")
+      .json({
+        jsonrpc: "2.0",
+        error: { code: -32000, message: "Method not allowed. This endpoint accepts POST only." },
+        id: null,
+      });
   });
 
   app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
@@ -92,7 +96,8 @@ async function runHttp(client: JsmClient): Promise<void> {
 
     // body-parser rejects a malformed body with an http-errors 400. That is the
     // client's mistake, not ours, and -32700 is the JSON-RPC code for it.
-    const status = (error as { status?: number; statusCode?: number }).status ??
+    const status =
+      (error as { status?: number; statusCode?: number }).status ??
       (error as { statusCode?: number }).statusCode ??
       500;
     const isClientError = status >= 400 && status < 500;

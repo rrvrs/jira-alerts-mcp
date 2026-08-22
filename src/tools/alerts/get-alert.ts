@@ -2,7 +2,7 @@
  * jsm_get_alert — full detail for a single alert, by id or alias.
  */
 
-import { JsmClient, handleApiError } from "../../services/client.js";
+import { type JsmClient, handleApiError } from "../../services/client.js";
 import { fail, renderAlertDetail, renderFormat } from "../../services/format.js";
 import type { Alert } from "../../types.js";
 import { defineTool } from "../define.js";

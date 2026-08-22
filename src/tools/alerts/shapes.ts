@@ -114,6 +114,8 @@ export const requestStatusShape = {
   request_id: z
     .string()
     .min(1)
-    .describe("The requestId returned by any alert write tool (acknowledge, close, note, assign, snooze)."),
+    .describe(
+      "The requestId returned by any alert write tool (acknowledge, close, note, assign, snooze).",
+    ),
   response_format: responseFormatField,
 };
