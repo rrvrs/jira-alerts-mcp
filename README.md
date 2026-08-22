@@ -112,7 +112,7 @@ The account also needs JSM Operations access on the relevant team. Alerts and sc
 ### Wiring into Claude Code
 
 ```bash
-claude mcp add jsm-alerts \
+claude mcp add jira-alerts-mcp \
   --env JSM_CLOUD_ID='your-cloud-id' \
   --env JSM_EMAIL='you@example.com' \
   --env JSM_API_TOKEN="${JSM_API_TOKEN}" \
@@ -126,7 +126,7 @@ without republishing:
   -- node /absolute/path/to/jira-alerts-mcp/dist/index.js
 ```
 
-Three things that catch people out: the server name is the first positional argument, before any flags; `-y` on `npx` skips the install prompt, which an MCP client has no way to answer; and in zsh `${VAR}` needs quoting. For GUI-launched sessions the token has to live in the `env` block of `~/.claude/settings.json` — the shell environment isn't inherited.
+Three things that catch people out: the server name is the first positional argument, before any flags — it is the local alias you will refer to the server by, and it only matches the package name here because that reads best; `-y` on `npx` skips the install prompt, which an MCP client has no way to answer; and in zsh `${VAR}` needs quoting. For GUI-launched sessions the token has to live in the `env` block of `~/.claude/settings.json` — the shell environment isn't inherited.
 
 ### Testing
 
