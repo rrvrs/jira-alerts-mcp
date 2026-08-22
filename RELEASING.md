@@ -11,13 +11,19 @@ maintainer's to run.
 
 ## 1. Bump the version
 
-Three places, and they must agree:
+Four places, and they must agree:
 
 | File | Field |
 |---|---|
 | `package.json` | `version` |
 | `server.json` | `version` |
 | `server.json` | `packages[0].version` |
+| `src/constants.ts` | `SERVER_VERSION` |
+
+The last one is the one that used to get missed. It is what the server reports
+over the MCP handshake, so a stale value misreports the version to every
+connected client — and until `check:manifests` started asserting it, every other
+check still passed while it was wrong.
 
 ```bash
 npm run check:manifests
