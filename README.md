@@ -1,27 +1,176 @@
-# jira-alerts-mcp
+<div align="center">
+
+# Jira Alerts MCP
+
+**Find what is paging you, and who is on call — from your agent.**
 
 [![CI](https://github.com/rrvrs/jira-alerts-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/rrvrs/jira-alerts-mcp/actions/workflows/ci.yml)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/jira-alerts-mcp.svg)](https://www.npmjs.com/package/jira-alerts-mcp)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A524-brightgreen.svg)](https://nodejs.org)
 
-An MCP server for the **Jira Service Management Operations** REST API — alerts and on-call.
+</div>
 
-## Why this exists
+An MCP server for **Jira Service Management Operations** — the alert surface that
+replaced Opsgenie, which no other Jira MCP server covers.
 
-**Alerts are not work items.** They live behind a different API — `/jsm/ops/api`, the rehosted Opsgenie surface — with its own scopes, its own id format, and its own asynchronous write semantics. The MCP Registry lists 30 Jira servers; every one of them talks to work items. None of them can tell you what is paging you right now.
+Search alerts and read their notes and activity timeline; acknowledge, close,
+annotate them and add responders; and look up who is on call now and next.
+Twelve tools, four of them writes.
 
-**The official Atlassian MCP server doesn't close the gap.** [`atlassian/atlassian-mcp-server`](https://github.com/atlassian/atlassian-mcp-server) covers Jira, Confluence, Jira Service Management *requests*, Bitbucket, Compass and the Teamwork Graph. It has no tool for alerts, schedules or on-call. It is also a hosted, closed server — the repository holds manifests and skills, not handlers — so that gap is Atlassian's to close, not something a contribution can fix.
+---
 
-**The Opsgenie MCP servers that do exist speak an API with an end date.** [giantswarm/mcp-opsgenie](https://github.com/giantswarm/mcp-opsgenie), [burakdirin/opsgenie-mcp-server](https://github.com/burakdirin/opsgenie-mcp-server) and [daviddykeuk/opsgenie-mcp](https://github.com/daviddykeuk/opsgenie-mcp) all call `api.opsgenie.com` with a GenieKey. Opsgenie [reached end-of-sale on 4 June 2025 and shuts down on 5 April 2027](https://community.atlassian.com/forums/Opsgenie-Migration-articles/The-Evolution-of-IT-Operations-Opsgenie-s-Transition-into/ba-p/2968088), at which point those REST APIs stop responding. The functionality moved into Jira Service Management.
+## Quickstart
 
-This server targets the surface that replaces them: `api.atlassian.com/jsm/ops/api/{cloudId}` with OAuth or an Atlassian API token. Search alerts, read their notes and activity timeline, acknowledge / close / annotate / add responders, and look up who is on call now and next.
+**You need** Node ≥ 24 and an Atlassian Cloud site with JSM Operations enabled.
+There is nothing to clone or build — your MCP client runs the published package.
 
-## Compatibility
+**1. Find your cloud id.** Open this while logged in to your site:
 
-For **Atlassian Cloud tenants with JSM Operations** — that is, sites already migrated off standalone Opsgenie, or provisioned after the merge. If your team still logs in at `app.opsgenie.com` and authenticates with a GenieKey, this server will not reach your data; one of the Opsgenie servers above will, until 2027.
+```
+https://<your-site>.atlassian.net/_edgeAuth/tenantInfo
+```
 
-Base URL: `https://api.atlassian.com/jsm/ops/api/{cloudId}/v1`
+**2. Create an API token** at
+[id.atlassian.com](https://id.atlassian.com/manage-profile/security/api-tokens).
+
+**3. Add the server.** For Claude Code:
+
+```bash
+claude mcp add jira-alerts-mcp \
+  --env JSM_CLOUD_ID='your-cloud-id' \
+  --env JSM_EMAIL='you@example.com' \
+  --env JSM_API_TOKEN="${JSM_API_TOKEN}" \
+  -- npx -y jira-alerts-mcp
+```
+
+Most other MCP clients take a JSON config of this shape:
+
+```json
+{
+  "mcpServers": {
+    "jira-alerts-mcp": {
+      "command": "npx",
+      "args": ["-y", "jira-alerts-mcp"],
+      "env": {
+        "JSM_CLOUD_ID": "your-cloud-id",
+        "JSM_EMAIL": "you@example.com",
+        "JSM_API_TOKEN": "your-api-token"
+      }
+    }
+  }
+}
+```
+
+**4. Check it works.** Ask your agent to list your on-call schedules. That runs
+`jsm_list_schedules`, which needs no ids and confirms auth, scopes and team
+visibility in a single call — if it returns schedules, you are set up correctly.
+
+Three things that catch people out: with `claude mcp add` the server name is the
+first positional argument, before any flags; `-y` on `npx` skips the install
+prompt, which an MCP client has no way to answer; and in zsh `${VAR}` needs
+quoting. For GUI-launched sessions the token has to live in the `env` block of
+`~/.claude/settings.json` — the shell environment isn't inherited.
+
+<details>
+<summary><b>Came here from this repository's Packages panel?</b></summary>
+
+You found `@rrvrs/jira-alerts-mcp` on GitHub Packages. That is a mirror of the
+same build, published so the panel is not empty. GitHub Packages requires a
+personal access token even for public packages, so installing from it needs auth
+that npmjs.com does not.
+
+Use `npx jira-alerts-mcp` above — that is
+[the package on npmjs.com](https://www.npmjs.com/package/jira-alerts-mcp),
+installable anonymously, and the only supported install route. The two are
+separate names on separate registries; nothing redirects between them.
+
+</details>
+
+<details>
+<summary><b>Running from a clone instead</b></summary>
+
+Only needed to work on the server itself, or to run a revision that has not been
+released:
+
+```bash
+git clone https://github.com/rrvrs/jira-alerts-mcp.git
+cd jira-alerts-mcp
+npm install
+npm run build
+```
+
+Then point your client at the build rather than at npx, so edits take effect
+without republishing:
+
+```bash
+  -- node /absolute/path/to/jira-alerts-mcp/dist/index.js
+```
+
+</details>
+
+---
+
+## Configuration
+
+| Variable | Required | Notes |
+|---|---|---|
+| `JSM_CLOUD_ID` | yes | Your Atlassian site's cloud id (a UUID) |
+| `JSM_EMAIL` + `JSM_API_TOKEN` | one of | [Create a token](https://id.atlassian.com/manage-profile/security/api-tokens) |
+| `JSM_OAUTH_TOKEN` | one of | OAuth 3LO bearer; takes precedence if set |
+| `TRANSPORT` | no | `stdio` (default) or `http` |
+| `PORT` / `HOST` | no | HTTP transport; defaults to `127.0.0.1:3000` |
+| `ALLOWED_HOSTS` | no | Comma-separated `Host` allowlist. Required if you set `HOST` beyond loopback — see [SECURITY.md](SECURITY.md) |
+
+Credentials are validated at startup, so a bad config fails immediately with an
+actionable message rather than on the first tool call.
+
+[`.env.example`](.env.example) lists these for reference. The server does **not**
+read `.env` itself — an MCP server is launched by its client, and the client owns
+the environment. Use the file as a checklist for your client's `env` block, or
+`set -a; source .env; set +a` for local development.
+
+**Required scopes.** Read tools need `read:ops-alert:jira-service-management`;
+write tools need `write:ops-alert:jira-service-management`. Granting only the
+read scope is a supported configuration — the write tools will fail with a 403
+naming the missing scope.
+
+**Team visibility.** The account also needs JSM Operations access on the relevant
+team. Alerts and schedules hang off a team's Operations page, so credentials that
+can't see the team will get **empty lists rather than errors**.
+
+---
+
+## Example
+
+Asking who is on call resolves to `jsm_list_schedules`, then `jsm_get_on_call`:
+
+> **you** — who's on call for payments right now?
+
+```markdown
+# Currently on-call for Payments — Primary
+
+- Dana Okafor
+```
+
+Acknowledging an alert returns a **receipt**, not the updated alert — because
+JSM applies alert actions out of band:
+
+> **you** — ack alert 4f2a9c1e-…-1718395200000, I'm looking at it
+
+```markdown
+Acknowledge request accepted for alert `4f2a9c1e-…-1718395200000`.
+
+- **Request id**: `c7b41f30-…`
+- **Result**: Request will be processed
+
+JSM applies alert actions asynchronously, so the alert may not reflect this
+change immediately. Confirm with jsm_get_request_status using the request id
+above, or re-read the alert after a moment.
+```
+
+That last paragraph is the point: without it an agent re-reads the alert, sees it
+still unacknowledged, and acknowledges it again.
 
 ---
 
@@ -42,114 +191,66 @@ Base URL: `https://api.atlassian.com/jsm/ops/api/{cloudId}/v1`
 | `jsm_get_on_call` | `GET /v1/schedules/{id}/on-calls` | read |
 | `jsm_get_next_on_call` | `GET /v1/schedules/{id}/next-on-calls` | read |
 
-Deliberately **not** implemented: `DELETE /v1/alerts/{id}` and alert creation. Deleting alerts destroys audit history with no undo, and alert creation belongs to the integration API (`/jsm/ops/integration/v2/alerts`) with an integration key, not to an interactive agent. Open an issue if you have a concrete need.
+Deliberately **not** implemented: `DELETE /v1/alerts/{id}` and alert creation.
+Deleting alerts destroys audit history with no undo, and alert creation belongs
+to the integration API (`/jsm/ops/integration/v2/alerts`) with an integration
+key, not to an interactive agent. Open an issue if you have a concrete need.
 
 ---
 
-## Three API behaviours the tool descriptions encode
+## What this server handles for you
 
-These are the things that silently break naive integrations, so they are stated in the tool descriptions where the model will actually read them:
+Three API behaviours silently break naive integrations. Each is stated in the
+tool descriptions, where the model will actually read it:
 
-1. **Writes are asynchronous.** Every mutating endpoint returns `{ result, requestId, took }` immediately and applies the change out of band. Re-reading the alert right after an ack will often show it still unacknowledged. `jsm_get_request_status` is the correct verification path, and each write tool points at it.
+1. **Writes are asynchronous.** Every mutating endpoint returns
+   `{ result, requestId, took }` immediately and applies the change out of band.
+   Re-reading the alert right after an ack will often show it still
+   unacknowledged. `jsm_get_request_status` is the correct verification path, and
+   each write tool points at it.
 
-2. **`tinyId` is not an id.** The short number in the JSM UI (`#4821`) is rejected by `/v1/alerts/{id}`, which accepts only the full `uuid-timestamp` id. Aliases need a different endpoint entirely (`/v1/alerts/alias?alias=`). Both the schema descriptions and the 404 handler say so explicitly, so the model self-corrects instead of retrying the same call.
+2. **`tinyId` is not an id.** The short number in the JSM UI (`#4821`) is
+   rejected by `/v1/alerts/{id}`, which accepts only the full `uuid-timestamp`
+   id. Aliases need a different endpoint entirely (`/v1/alerts/alias?alias=`).
+   Both the schema descriptions and the 404 handler say so explicitly, so the
+   model self-corrects instead of retrying the same call.
 
-3. **The search window caps at 20,000.** `offset + limit` must stay under it. `jsm_list_alerts` rejects deeper paging locally with a message telling the model to narrow the query instead of burning a round trip on a guaranteed 400.
-
----
-
-## Setup
-
-Requires **Node ≥ 24**.
-
-Nothing to clone or build — your MCP client runs the published package directly:
-
-```bash
-npx jira-alerts-mcp
-```
-
-That is [`jira-alerts-mcp` on npmjs.com](https://www.npmjs.com/package/jira-alerts-mcp),
-installable anonymously, and it is the only supported install route.
-
-> **If you arrived from this repository's Packages panel**, you found
-> `@rrvrs/jira-alerts-mcp` on GitHub Packages. That is a mirror of the same
-> build, published so the panel is not empty. GitHub Packages requires a
-> personal access token even for public packages, so installing from it needs
-> auth that npmjs.com does not — use the command above instead. The two are
-> separate names on separate registries; nothing redirects between them.
-
-Clone instead only to work on the server itself, or to run a revision that has
-not been released:
-
-```bash
-git clone https://github.com/rrvrs/jira-alerts-mcp.git
-cd jira-alerts-mcp
-npm install
-npm run build
-```
-
-### Configuration
-
-Copy [`.env.example`](.env.example) for reference. Note that the server does **not** read `.env` itself — an MCP server is launched by its client, and the client owns the environment. Use the file as a checklist for your client's `env` block, or `set -a; source .env; set +a` for local development.
-
-| Variable | Required | Notes |
-|---|---|---|
-| `JSM_CLOUD_ID` | yes | Your Atlassian site's cloud id (a UUID) |
-| `JSM_EMAIL` + `JSM_API_TOKEN` | one of | [Create a token](https://id.atlassian.com/manage-profile/security/api-tokens) |
-| `JSM_OAUTH_TOKEN` | one of | OAuth 3LO bearer; takes precedence if set |
-| `TRANSPORT` | no | `stdio` (default) or `http` |
-| `PORT` / `HOST` | no | HTTP transport; defaults to `127.0.0.1:3000` |
-| `ALLOWED_HOSTS` | no | Comma-separated `Host` allowlist. Required if you set `HOST` beyond loopback — see [SECURITY.md](SECURITY.md) |
-
-Credentials are validated at startup, so a bad config fails immediately with an actionable message rather than on the first tool call.
-
-**Finding your cloud id.** Open `https://<your-site>.atlassian.net/_edgeAuth/tenantInfo` while logged in, or call `GET https://api.atlassian.com/oauth/token/accessible-resources` with your token.
-
-**Required scopes.** Read tools need `read:ops-alert:jira-service-management`; write tools need `write:ops-alert:jira-service-management`. Granting only the read scope is a supported configuration — the write tools will fail with a 403 naming the missing scope.
-
-The account also needs JSM Operations access on the relevant team. Alerts and schedules hang off a team's Operations page, so credentials that can't see the team will get **empty lists rather than errors**.
-
-### Wiring into Claude Code
-
-```bash
-claude mcp add jira-alerts-mcp \
-  --env JSM_CLOUD_ID='your-cloud-id' \
-  --env JSM_EMAIL='you@example.com' \
-  --env JSM_API_TOKEN="${JSM_API_TOKEN}" \
-  -- npx -y jira-alerts-mcp
-```
-
-Working on the server? Point it at your build instead, so edits take effect
-without republishing:
-
-```bash
-  -- node /absolute/path/to/jira-alerts-mcp/dist/index.js
-```
-
-Three things that catch people out: the server name is the first positional argument, before any flags — it is the local alias you will refer to the server by, and it only matches the package name here because that reads best; `-y` on `npx` skips the install prompt, which an MCP client has no way to answer; and in zsh `${VAR}` needs quoting. For GUI-launched sessions the token has to live in the `env` block of `~/.claude/settings.json` — the shell environment isn't inherited.
-
-### Testing
-
-```bash
-npm test           # offline test suite — no network, no tenant
-npm run inspect    # MCP Inspector against dist/index.js — needs credentials
-```
-
-For the live check, start with `jsm_list_schedules`. It needs no ids and confirms auth, scopes and team visibility in one call.
+3. **The search window caps at 20,000.** `offset + limit` must stay under it.
+   `jsm_list_alerts` rejects deeper paging locally with a message telling the
+   model to narrow the query instead of burning a round trip on a guaranteed 400.
 
 ---
 
-## Endpoint verification status
+## Why this exists
 
-Paths were checked against the [JSM ops REST API reference](https://developer.atlassian.com/cloud/jira/service-desk-ops/rest/v2/api-group-alerts/) rather than assumed:
+**Alerts are not work items.** They live behind a different API — `/jsm/ops/api`,
+the rehosted Opsgenie surface — with its own scopes, its own id format and its
+own asynchronous write semantics. The MCP Registry lists 30 Jira servers; every
+one of them talks to work items. None can tell you what is paging you right now.
+[`atlassian/atlassian-mcp-server`](https://github.com/atlassian/atlassian-mcp-server)
+does not close the gap either: it covers Jira, Confluence, JSM *requests*,
+Bitbucket, Compass and the Teamwork Graph, but has no tool for alerts, schedules
+or on-call — and being a hosted, closed server, that gap is Atlassian's to close
+rather than something a contribution can fix.
 
-- **Confirmed in the published docs**: `/v1/alerts`, `/v1/alerts/{id}`, `/v1/alerts/alias`, `/v1/alerts/requests/{id}`, `/v1/alerts/{id}/acknowledge`, `/v1/alerts/{id}/close`, `/v1/alerts/{id}/responders`, `/v1/alerts/{id}/notes`, `/v1/schedules/{id}/on-calls`, `/v1/schedules/{id}/next-on-calls`.
-- **Opsgenie parity, worth confirming on first run**: `GET /v1/alerts/{id}/logs` and the exact query parameters for note/log paging (`order`, `offset` cursor). JSM Operations is a rehost of the Opsgenie API and these are unchanged there, but the docs site renders client-side and could not be read end to end.
-- **Collection envelope**: Atlassian is inconsistent about whether collections come back under `data` or `values`. `JsmClient.getCollection` accepts both and normalises, so this needs no change either way — but if a list tool returns zero items against data you know exists, that normaliser is the first thing to inspect.
+**The Opsgenie MCP servers that do exist speak an API with an end date.**
+[giantswarm/mcp-opsgenie](https://github.com/giantswarm/mcp-opsgenie),
+[burakdirin/opsgenie-mcp-server](https://github.com/burakdirin/opsgenie-mcp-server)
+and [daviddykeuk/opsgenie-mcp](https://github.com/daviddykeuk/opsgenie-mcp) all
+call `api.opsgenie.com` with a GenieKey. Opsgenie
+[reached end-of-sale on 4 June 2025 and shuts down on 5 April 2027](https://community.atlassian.com/forums/Opsgenie-Migration-articles/The-Evolution-of-IT-Operations-Opsgenie-s-Transition-into/ba-p/2968088),
+at which point those REST APIs stop responding. This server targets the surface
+that replaces them: `https://api.atlassian.com/jsm/ops/api/{cloudId}/v1`.
+
+**Compatibility.** For Atlassian Cloud tenants with JSM Operations — sites
+already migrated off standalone Opsgenie, or provisioned after the merge. If your
+team still logs in at `app.opsgenie.com` and authenticates with a GenieKey, this
+server will not reach your data; one of the Opsgenie servers above will, until
+2027.
 
 ---
 
-## Architecture
+## Project layout
 
 ```
 src/
@@ -169,29 +270,28 @@ src/
     └── oncall/              # schedules and on-call
 ```
 
-One tool per file. A tool module owns its input shape, its description and its handler, and nothing else — the largest is ~100 lines. `server.ts` concatenates the three domains' exported arrays; `index.ts` only knows about transports.
+One tool per file. A tool module owns its input shape, its description and its
+handler, and nothing else — the largest is ~100 lines. `server.ts` concatenates
+the three domains' exported arrays; `index.ts` only knows about transports.
 
-Three conventions worth preserving as you extend it:
-
-- **Every list tool goes through `executeList`** (`tools/list-executor.ts`). It owns fetching, the empty-result branch, truncation to 25,000 characters, the pagination block and the format switch. Two bugs once lived in per-tool copies of that logic — an empty page returned a result the SDK rejected, and `next_offset` skipped records truncation had dropped. There is one copy now, on purpose.
-- **Every write goes through `executeAction`** (`tools/actions/execute-action.ts`), so the async-receipt contract can't drift between the four write tools.
-- **Pagination reports what was delivered, not what was fetched.** `count` and `next_offset` describe the records actually in the response, and `truncated` flags when the API returned more than fitted.
-
-### A note on `inputSchema`
-
-The MCP TypeScript SDK's `registerTool` expects a **raw Zod shape** (a plain object of Zod types), not a `z.object(...)`. Passing a `z.object` — as some examples show — fails. Tools here define a plain shape and derive their input type with `z.infer<z.ZodObject<typeof shape>>`. One consequence: `.strict()` can't be applied to a raw shape, so unknown keys are stripped rather than rejected.
-
-Relatedly, `ToolResult` is a **type alias, not an interface**: the SDK's `CallToolResult` carries an index signature, and TypeScript only grants an implicit one to type aliases.
+Three conventions in here are load-bearing, and changing them by accident is the
+most likely way to break the server subtly. They are written up, with the bugs
+that motivated each, under
+[Conventions worth preserving](CONTRIBUTING.md#conventions-worth-preserving).
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop, the conventions worth preserving, and how to add a tool. Issues and PRs must not contain cloud ids, tokens, or real alert data.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop, the conventions
+worth preserving, and how to add a tool. Issues and PRs must not contain cloud
+ids, tokens, or real alert data.
 
 ## Security
 
-This server holds Atlassian credentials, and the HTTP transport performs no authentication of its own — see [SECURITY.md](SECURITY.md) for the threat model, hardening notes, and how to report a vulnerability privately.
+This server holds Atlassian credentials, and the HTTP transport performs no
+authentication of its own — see [SECURITY.md](SECURITY.md) for the threat model,
+hardening notes, and how to report a vulnerability privately.
 
 ## License
 
