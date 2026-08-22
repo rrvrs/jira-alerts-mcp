@@ -52,7 +52,11 @@ This is not tidiness. Those five steps were once copy-pasted into each list hand
 
 Two rules follow from it: an empty page is an ordinary answer and must still ship a structured payload (use `emptyResult`), and `count`/`next_offset` describe what the response actually contains, never what the API returned.
 
-**3. `inputSchema` takes a raw Zod shape, not a `z.object(...)`.** The MCP TypeScript SDK's `registerTool` wraps the shape itself. Passing a `z.object` — as some examples online show — fails. Tools here define a plain object of Zod types, and [`defineTool`](src/tools/define.ts) infers the handler's `params` from it, so no tool needs to write `z.infer<z.ZodObject<typeof shape>>` by hand. One consequence of the raw shape: `.strict()` cannot be applied to it, so unknown keys are stripped rather than rejected.
+**3. `inputSchema` takes a raw Zod shape, not a `z.object(...)`.** Tools define a plain object of Zod types, and [`defineTool`](src/tools/define.ts) infers the handler's `params` from it, so no tool needs to write `z.infer<z.ZodObject<typeof shape>>` by hand. Keep writing raw shapes — but the reason is inference, not a hard SDK requirement.
+
+The wrapping happens once, in `registerTools`, which passes `z.strictObject(shape)` to the SDK. That is deliberate. Left as a raw shape, the SDK wraps it in a plain `z.object`, and under Zod 4 a plain object emits no `additionalProperties` — so nothing in the advertised schema tells a model that a key it invented is not a real parameter, and the key is silently dropped at runtime. `strictObject` restores `additionalProperties: false` and turns an unknown key into a visible `-32602` naming it.
+
+Two older claims about this are no longer true, and are worth un-learning: SDK ≥ 1.30 *accepts* a pre-wrapped Zod schema (`getZodSchemaObject` returns it as-is), and unknown keys are now **rejected, not stripped**. Both held on SDK 1.12.
 
 Related: `ToolResult` in `src/services/format.ts` is a **type alias, not an interface**. The SDK's `CallToolResult` carries an index signature, and TypeScript only grants an implicit one to type aliases. Making it an interface breaks every tool callback's typecheck.
 

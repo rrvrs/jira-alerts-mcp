@@ -93,6 +93,52 @@ if (!nameTemplate || !matrixValues) {
   );
 }
 
+// --- Declared floors vs installed versions ---------------------------------
+//
+// `npm outdated` compares installed against *latest*, so it stays silent while
+// a declared floor rots far below what the project actually runs. That is how
+// `@modelcontextprotocol/sdk` sat at `^1.12.0` while 1.30.0 was installed:
+// eighteen minors of behaviour drift that no tool reported, because ^1.12.0
+// still resolves to 1.30.0. The floor is what a fresh install without this
+// lockfile is allowed to pick, so it has to mean something.
+
+/** The lowest version a range admits, or null if the range is too complex to reason about. */
+const floorOf = (range) => {
+  const match = /^\s*(?:\^|~|>=)?\s*v?(\d+(?:\.\d+){0,2})\s*$/.exec(range);
+  return match ? match[1] : null;
+};
+
+const compareVersions = (a, b) => {
+  const parts = (v) => v.split("-")[0].split(".").map((n) => Number(n) || 0);
+  const [x, y] = [parts(a), parts(b)];
+  for (let i = 0; i < 3; i += 1) {
+    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) < (y[i] ?? 0) ? -1 : 1;
+  }
+  return 0;
+};
+
+const declared = { ...pkg.dependencies, ...pkg.devDependencies };
+let checked = 0;
+
+for (const [name, range] of Object.entries(declared)) {
+  let installed;
+  try {
+    installed = read(`node_modules/${name}/package.json`).version;
+  } catch {
+    continue; // Not installed here; `npm ci` in CI guarantees it is.
+  }
+
+  const floor = floorOf(range);
+  if (!floor) continue; // Compound ranges like "^3.25 || ^4.0" are not ours to judge.
+
+  checked += 1;
+  expect(
+    compareVersions(floor, installed) >= 0,
+    `${name} declares ${range} but ${installed} is installed — raise the floor to ^${installed}, ` +
+      "or a fresh install may resolve a version this project has never been tested against",
+  );
+}
+
 if (failures.length) {
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(1);
@@ -100,3 +146,4 @@ if (failures.length) {
 
 console.log(`✓ package.json and server.json agree — ${server.name}@${server.version}`);
 console.log(`✓ ruleset requires exactly the checks CI produces`);
+console.log(`✓ ${checked} dependency floors match their installed versions`);
