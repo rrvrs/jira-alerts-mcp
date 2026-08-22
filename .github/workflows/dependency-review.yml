@@ -1,8 +1,13 @@
 name: Dependency review
 
-# Advisory on purpose: this reports a dependency introduced with a known
-# advisory on the PR that introduces it, but it is not in the ruleset's required
-# checks, so it informs review rather than blocking it.
+# Fails the PR that introduces a dependency carrying a known high-severity
+# advisory. It is deliberately NOT in the ruleset's required checks, so a
+# maintainer can still merge over it with the failure visible, rather than the
+# finding being silently swallowed.
+#
+# Requires the repository's Dependency graph to be enabled — without it the
+# action errors out rather than passing vacuously, which is the behaviour we
+# want from a supply-chain check.
 on:
   pull_request:
     branches: [main]
