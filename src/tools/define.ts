@@ -8,7 +8,7 @@
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { z } from "zod";
+import { z } from "zod";
 
 import type { JsmClient } from "../services/client.js";
 import type { ToolResult } from "../services/format.js";
@@ -35,8 +35,8 @@ export interface ToolDefinition<Shape extends z.ZodRawShape> {
    */
   description: string;
   /**
-   * A raw Zod shape, NOT a `z.object(...)`. The SDK wraps it itself and
-   * rejects a pre-wrapped object.
+   * A raw Zod shape, NOT a `z.object(...)`. `registerTools` wraps it in a
+   * `z.strictObject` on the way to the SDK — see the note there for why.
    */
   inputSchema: Shape;
   outputSchema?: z.ZodRawShape;
@@ -75,7 +75,13 @@ export function registerTools(
       {
         title: tool.title,
         description: tool.description,
-        inputSchema: tool.inputSchema,
+        // Wrapped here rather than left as a raw shape: the SDK would wrap a
+        // raw shape in a plain `z.object`, which under Zod 4 emits no
+        // `additionalProperties`, so nothing tells a model that a key it
+        // invented is not a real parameter. `strictObject` restores
+        // `additionalProperties: false` and makes an unknown key a visible
+        // error instead of a silently dropped one.
+        inputSchema: z.strictObject(tool.inputSchema),
         ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
         annotations: tool.annotations,
       },
