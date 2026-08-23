@@ -281,7 +281,7 @@ describe("jsm_get_on_call", () => {
 
     assert.notEqual(result.isError, true);
     assert.match(textOf(result), /712020:abc/);
-    assert.match(textOf(result), /read:user:jira/);
+    assert.match(textOf(result), /read:jira-user/);
   });
 });
 

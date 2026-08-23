@@ -184,7 +184,7 @@ the single most common setup mistake:
 | The 5 alert reads | `read:ops-alert:jira-service-management` |
 | The 4 alert writes | `read:ops-alert:…` **and** `write:ops-alert:…` — both |
 | `jsm_list_schedules`, `jsm_get_on_call`, `jsm_get_next_on_call`, `jsm_get_schedule_timeline` | `read:ops-config:jira-service-management` |
-| Resolving responder ids to names (optional) | `read:user:jira` (granular) or `read:jira-user` (classic) |
+| Resolving responder ids to names (optional) | `read:jira-user` |
 
 Three consequences worth knowing before you mint a token:
 
@@ -198,11 +198,17 @@ Three consequences worth knowing before you mint a token:
   deliberate way to narrow what the agent can reach.
 - **The Jira user scope is optional, and its absence is visible rather than
   silent.** Every responder the Operations API returns is a bare account id
-  (`712020:9ae5385e-…`); with the user scope the on-call tools resolve those to
-  names and emails in the same call. Without it they still answer — you get the
-  ids, plus one line saying which scope would have named them. Knowing who is
-  on-call matters more than knowing their display name, so a missing scope here
-  never turns into an error.
+  (`712020:9ae5385e-…`); with `read:jira-user` the on-call tools resolve those
+  to names and emails in the same call. Without it they still answer — you get
+  the ids, plus one line saying which scope would have named them. Knowing who
+  is on-call matters more than knowing their display name, so a missing scope
+  here never turns into an error.
+
+  Reach for `read:jira-user`, not `read:user:jira`. The granular scheme does
+  cover these endpoints, but only as the complete set
+  `read:application-role:jira` + `read:group:jira` + `read:user:jira` +
+  `read:avatar:jira` — `read:user:jira` on its own is not sufficient, and
+  Atlassian still marks the whole granular set Beta for this API.
 
 **Team visibility.** The account also needs JSM Operations access on the relevant
 team. Alerts and schedules hang off a team's Operations page, so credentials that
