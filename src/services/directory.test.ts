@@ -123,7 +123,11 @@ describe("resolveUsers", () => {
     const directory = await resolveUsers(client, ["712020:abc"]);
 
     assert.equal(directory.names.size, 0);
-    assert.match(directory.note ?? "", /read:user:jira/);
+    // read:jira-user is the scope that actually works. Naming the granular
+    // read:user:jira first sent people to add a scope that is Beta and, alone,
+    // insufficient — a wrong answer in the one message whose entire job is to
+    // tell someone what to change.
+    assert.match(directory.note ?? "", /read:jira-user/);
     assert.match(directory.note ?? "", /separate grant/);
   });
 

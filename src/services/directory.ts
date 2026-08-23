@@ -81,8 +81,10 @@ function describeLookupFailure(error: unknown): string {
     if (status === 401 || status === 403) {
       return (
         "Responder ids could not be resolved to names: the credentials lack the Jira user scope. " +
-        "Add read:user:jira (granular) or read:jira-user (classic) to the token — it is a separate " +
-        "grant from the ops-alert and ops-config scopes, and everything else here works without it."
+        "Add read:jira-user to the token — a separate grant from the ops-alert and ops-config " +
+        "scopes, and everything else here works without it. (The granular equivalent is the whole " +
+        "set read:application-role:jira, read:group:jira, read:user:jira and read:avatar:jira, " +
+        "which Atlassian still marks Beta; read:jira-user is the one to reach for.)"
       );
     }
     if (status === 404) {
