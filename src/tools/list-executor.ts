@@ -14,6 +14,7 @@ import { type JsmClient, handleApiError } from "../services/client.js";
 import {
   buildPagination,
   emptyResult,
+  extractLinkParam,
   fail,
   renderFormat,
   withCharacterLimit,
@@ -25,13 +26,22 @@ export interface ListToolOptions<T> {
   client: JsmClient;
   /** Path below the cloud-id root, e.g. "/v1/alerts". */
   path: string;
-  /** Query parameters. `undefined` values are dropped by axios. */
+  /**
+   * Query parameters *other than* the page size. Do not pass a page size here:
+   * executeList sends it, under the name the API actually reads.
+   */
   params?: Record<string, unknown>;
   /** Key the items sit under in structuredContent, e.g. "alerts". */
   key: string;
   /** Context for error messages, e.g. "list alerts". */
   context: string;
-  /** Page size requested, used to decide whether more records exist. */
+  /**
+   * Page size requested. Sent to the API as `size`, which is what every paged
+   * JSM Operations endpoint reads — these tools spent a long time sending
+   * `limit`, which is not a parameter, so the API quietly served its own
+   * default (20 for alerts, 25 for schedules) and callers asking for 100
+   * records were told 20 was all of them.
+   */
   limit: number;
   /** Numeric offset, for offset-paged endpoints. Omit for cursor-paged ones. */
   offset?: number;
@@ -57,7 +67,7 @@ export async function executeList<T>({
   format,
 }: ListToolOptions<T>): Promise<ToolResult> {
   try {
-    const page = await client.getCollection<T>(path, params);
+    const page = await client.getCollection<T>(path, { ...params, size: limit });
 
     // An empty page is an ordinary answer, not an error — but it still has to
     // ship a structured payload or the SDK rejects the whole result.
@@ -75,7 +85,11 @@ export async function executeList<T>({
         limit,
         offset,
         totalCount: page.totalCount,
-        nextCursor: page.paging?.next,
+        // Cursor-paged endpoints put the next cursor in the link's `after`
+        // parameter; offset-paged ones have no cursor and correctly yield
+        // undefined here, leaving next_offset to do the work.
+        nextCursor: extractLinkParam(page.paging?.next, "after"),
+        nextLink: page.paging?.next,
       }),
     };
 

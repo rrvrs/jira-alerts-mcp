@@ -49,26 +49,15 @@ export const listAlertsShape = {
     ),
   limit: limitField,
   offset: offsetField,
+  // Only these four are accepted. The wider list this used to offer produced
+  // an opaque HTTP 400 for anything else, which reads like a broken query
+  // rather than an unsupported sort.
   sort: z
-    .enum([
-      "createdAt",
-      "updatedAt",
-      "tinyId",
-      "alias",
-      "message",
-      "status",
-      "acknowledged",
-      "isSeen",
-      "snoozed",
-      "count",
-      "lastOccurredAt",
-      "source",
-      "owner",
-      "integration.name",
-      "integration.type",
-    ])
+    .enum(["createdAt", "insertedAt", "lastOccurredAt", "priority"])
     .default("createdAt")
-    .describe("Field to sort by (default 'createdAt')."),
+    .describe(
+      "Field to sort by (default 'createdAt'). These four are the only values the API accepts.",
+    ),
   order: z
     .enum(["asc", "desc"])
     .default("desc")

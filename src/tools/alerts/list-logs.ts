@@ -48,7 +48,9 @@ Examples:
     executeList<AlertLog>({
       client,
       path: `/v1/alerts/${encodeURIComponent(params.alert_id)}/logs`,
-      params: { limit: params.limit, order: params.order, offset: params.offset },
+      // `after` is the cursor parameter these endpoints read; `offset` is not
+      // one of their parameters at all, so paging used to re-serve page one.
+      params: { order: params.order, after: params.offset },
       key: "logs",
       context: "list alert logs",
       limit: params.limit,

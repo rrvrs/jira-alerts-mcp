@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 
+import { resolveTeams } from "../../services/directory.js";
 import { renderSchedules } from "../../services/format.js";
 import type { Schedule } from "../../types.js";
 import { paginationOutputShape } from "../alerts/shapes.js";
@@ -48,21 +49,26 @@ Error handling:
     idempotentHint: true,
     openWorldHint: true,
   },
-  handler: async (params, client) =>
-    executeList<Schedule>({
+  handler: async (params, client) => {
+    // One cached lookup for the whole page: the API returns a bare teamId, and
+    // a schedule's owning team is most of what makes the list readable.
+    const teams = await resolveTeams(client);
+
+    return executeList<Schedule>({
       client,
       path: "/v1/schedules",
-      params: { limit: params.limit, offset: params.offset },
+      params: { offset: params.offset },
       key: "schedules",
       context: "list schedules",
       limit: params.limit,
       offset: params.offset,
       format: params.response_format,
-      render: (items) => ["# On-call schedules", "", renderSchedules(items)].join("\n"),
+      render: (items) => ["# On-call schedules", "", renderSchedules(items, teams)].join("\n"),
       // An empty list here usually means missing team access, not an empty
       // site — say so, because the API returns no error to distinguish them.
       emptyMessage:
         "No on-call schedules found. Schedules live on a team's Operations page in JSM — if you expect some, confirm the credentials can see that team.",
       hint: "Increase 'offset' to see the rest.",
-    }),
+    });
+  },
 });

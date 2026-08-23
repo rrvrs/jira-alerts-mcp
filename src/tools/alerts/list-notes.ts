@@ -50,7 +50,9 @@ Note: these endpoints page with opaque cursors, not numeric offsets — pass nex
     executeList<AlertNote>({
       client,
       path: `/v1/alerts/${encodeURIComponent(params.alert_id)}/notes`,
-      params: { limit: params.limit, order: params.order, offset: params.offset },
+      // `after` is the cursor parameter these endpoints read; `offset` is not
+      // one of their parameters at all, so paging used to re-serve page one.
+      params: { order: params.order, after: params.offset },
       key: "notes",
       context: "list alert notes",
       limit: params.limit,
