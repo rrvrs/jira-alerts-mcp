@@ -4,6 +4,7 @@
  */
 
 import { CHARACTER_LIMIT } from "../constants.js";
+import { type Directory, renderIdentity } from "./directory.js";
 import { ResponseFormat } from "../schemas/common.js";
 import type {
   Alert,
@@ -13,6 +14,7 @@ import type {
   OnCallData,
   OnCallParticipant,
   PaginationMeta,
+  ResolvedIdentity,
   Schedule,
 } from "../types.js";
 
@@ -77,6 +79,29 @@ export interface PaginationInput {
   offset?: number | undefined;
   totalCount?: number | undefined;
   nextCursor?: string | undefined;
+  /**
+   * The `links.next` the API returned for this page, if any. Authoritative:
+   * the API knows whether more records exist and we do not.
+   */
+  nextLink?: string | undefined;
+}
+
+/**
+ * Pulls one query parameter out of an API `links.next` value.
+ *
+ * The API returns a whole relative URL there — "/v1/alerts/{id}/notes?after=149…"
+ * — not a bare cursor. Handing that straight back as `next_cursor` invites the
+ * caller to send the entire URL as their `after` parameter, so extract the part
+ * that is actually re-sendable.
+ */
+export function extractLinkParam(link: string | undefined, name: string): string | undefined {
+  if (!link) return undefined;
+  try {
+    // Base is irrelevant and never used; it only makes a relative URL parseable.
+    return new URL(link, "https://api.atlassian.com").searchParams.get(name) ?? undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -94,11 +119,17 @@ export function buildPagination({
   offset,
   totalCount,
   nextCursor,
+  nextLink,
 }: PaginationInput): PaginationMeta {
   const truncated = returned < fetched;
-  // A full page means the API probably has more. So does a truncated one — by
-  // definition we are holding back records the API already handed us.
-  const hasMore = nextCursor ? true : truncated || fetched === limit;
+
+  // Prefer what the API said. The `fetched === limit` heuristic below is only
+  // sound when the API honoured the page size we asked for, and it silently
+  // did not for a long time: the page-size parameter is `size`, we were sending
+  // `limit`, so a capped 20-record page never equalled a requested 100 and
+  // every full page reported has_more: false. A caller that trusted that
+  // stopped paging while records remained.
+  const hasMore = nextCursor || nextLink ? true : truncated || (fetched > 0 && fetched >= limit);
 
   return {
     count: returned,
@@ -134,6 +165,11 @@ function timestamp(value?: string): string {
     : parsed.toISOString().replace("T", " ").replace(".000Z", "Z");
 }
 
+/** The API spells this with one "r"; Opsgenie used two. Accept either. */
+function lastOccurred(alert: Alert): string | undefined {
+  return alert.lastOccurredAt ?? alert.lastOccuredAt;
+}
+
 function alertStateLabel(alert: Alert): string {
   if (alert.status === "closed") return "closed";
   if (alert.snoozed) return `open, snoozed until ${timestamp(alert.snoozedUntil)}`;
@@ -148,8 +184,8 @@ export function renderAlertLine(alert: Alert): string {
       alert.count && alert.count > 1 ? ` | count: ${alert.count}` : ""
     }`,
     `  - created: ${timestamp(alert.createdAt)}${
-      alert.lastOccurredAt && alert.lastOccurredAt !== alert.createdAt
-        ? ` | last seen: ${timestamp(alert.lastOccurredAt)}`
+      lastOccurred(alert) && lastOccurred(alert) !== alert.createdAt
+        ? ` | last seen: ${timestamp(lastOccurred(alert))}`
         : ""
     }`,
   ];
@@ -160,7 +196,7 @@ export function renderAlertLine(alert: Alert): string {
 }
 
 /** Full detail view used by jsm_get_alert. */
-export function renderAlertDetail(alert: Alert): string {
+export function renderAlertDetail(alert: Alert, directory?: Directory): string {
   const lines = [
     `# Alert #${alert.tinyId ?? "?"}: ${alert.message}`,
     "",
@@ -170,26 +206,43 @@ export function renderAlertDetail(alert: Alert): string {
     `- **Updated**: ${timestamp(alert.updatedAt)}`,
   ];
 
-  if (alert.lastOccurredAt) lines.push(`- **Last occurred**: ${timestamp(alert.lastOccurredAt)}`);
+  if (lastOccurred(alert)) lines.push(`- **Last occurred**: ${timestamp(lastOccurred(alert))}`);
   if (alert.count !== undefined) lines.push(`- **Deduplicated count**: ${alert.count}`);
   if (alert.source) lines.push(`- **Source**: ${alert.source}`);
   if (alert.owner) lines.push(`- **Owner**: ${alert.owner}`);
   if (alert.alias) lines.push(`- **Alias**: \`${alert.alias}\``);
   if (alert.entity) lines.push(`- **Entity**: ${alert.entity}`);
-  if (alert.integration?.name)
+  // JSM Operations returns these flat; Opsgenie nested them under `integration`.
+  const integrationName = alert.integration?.name ?? alert.integrationName;
+  const integrationType = alert.integration?.type ?? alert.integrationType;
+  if (integrationName)
     lines.push(
-      `- **Integration**: ${alert.integration.name}${alert.integration.type ? ` (${alert.integration.type})` : ""}`,
+      `- **Integration**: ${integrationName}${integrationType ? ` (${integrationType})` : ""}`,
     );
   if (alert.tags?.length) lines.push(`- **Tags**: ${alert.tags.join(", ")}`);
 
+  // Alert responders arrive as {id, type} with no name, exactly like on-call
+  // participants — so they go through the same resolution.
   const responders = [...(alert.responders ?? []), ...(alert.teams ?? [])]
-    .map((r) => r.name ?? r.username ?? r.id)
-    .filter(Boolean);
+    .filter((r) => r.id ?? r.name ?? r.username)
+    .map((r) => {
+      const resolved = r.id ? directory?.names.get(r.id) : undefined;
+      const fallbackName = r.name ?? r.username;
+      return renderIdentity({
+        id: r.id ?? fallbackName ?? "unknown",
+        ...(r.type ? { type: r.type } : {}),
+        ...(fallbackName ? { displayName: fallbackName } : {}),
+        ...resolved,
+      });
+    });
   if (responders.length) lines.push(`- **Responders**: ${responders.join(", ")}`);
 
   if (alert.report?.acknowledgedBy)
     lines.push(`- **Acknowledged by**: ${alert.report.acknowledgedBy}`);
   if (alert.report?.closedBy) lines.push(`- **Closed by**: ${alert.report.closedBy}`);
+  // The API reports the times without the actor, at the top level.
+  if (alert.ackTime) lines.push(`- **Acknowledged at**: ${timestamp(alert.ackTime)}`);
+  if (alert.closeTime) lines.push(`- **Closed at**: ${timestamp(alert.closeTime)}`);
 
   lines.push(`- **Id**: \`${alert.id}\``);
 
@@ -219,17 +272,22 @@ export function renderNotes(notes: AlertNote[]): string {
 
 export function renderLogs(logs: AlertLog[]): string {
   if (!logs.length) return "No activity logs on this alert.";
+  // logTime is the field the API actually sends; reading only createdAt
+  // rendered every line as "unknown".
   return logs
-    .map((l) => `- **${timestamp(l.createdAt)}** — ${l.owner ?? "system"}: ${l.log}`)
+    .map((l) => `- **${timestamp(l.logTime ?? l.createdAt)}** — ${l.owner ?? "system"}: ${l.log}`)
     .join("\n");
 }
 
-export function renderSchedules(schedules: Schedule[]): string {
+export function renderSchedules(schedules: Schedule[], teams?: Map<string, string>): string {
   if (!schedules.length) return "No schedules found.";
   return schedules
     .map((s) => {
       const bits = [`**${s.name}**${s.enabled === false ? " _(disabled)_" : ""}`];
-      if (s.ownerTeam?.name) bits.push(`  - team: ${s.ownerTeam.name}`);
+      // The API returns a bare teamId, not an ownerTeam object, so the team
+      // never rendered at all until it was resolved through /v1/teams.
+      const team = s.ownerTeam?.name ?? (s.teamId ? (teams?.get(s.teamId) ?? s.teamId) : undefined);
+      if (team) bits.push(`  - team: ${team}`);
       if (s.timezone) bits.push(`  - timezone: ${s.timezone}`);
       if (s.description) bits.push(`  - ${s.description}`);
       bits.push(`  - id: \`${s.id}\``);
@@ -238,40 +296,278 @@ export function renderSchedules(schedules: Schedule[]): string {
     .join("\n");
 }
 
-function flattenParticipants(participants: OnCallParticipant[]): string[] {
-  const names: string[] = [];
-  for (const p of participants) {
-    const label = p.name ?? p.id;
-    if (label && p.type !== "none") names.push(p.type ? `${label} (${p.type})` : label);
-    if (p.onCallParticipants?.length) names.push(...flattenParticipants(p.onCallParticipants));
-    if (p.forwardedFrom?.user) {
-      const from = p.forwardedFrom.user.name ?? p.forwardedFrom.user.id;
-      if (from) names.push(`${from} (forwarded)`);
-    }
-  }
-  return names;
+/**
+ * The spec types `forwardedFrom` as a participant; Opsgenie wrapped it in
+ * `{ user: … }`. Accept either rather than silently dropping the forward.
+ */
+function unwrapForward(
+  forwardedFrom: OnCallParticipant | undefined,
+): OnCallParticipant | undefined {
+  const legacy = (forwardedFrom as { user?: OnCallParticipant } | undefined)?.user;
+  return legacy ?? forwardedFrom;
 }
 
-export function renderOnCall(data: OnCallData, next: boolean): string {
-  const scheduleName = data._parent?.name ?? "schedule";
-  const recipients = next ? data.nextOnCallRecipients : data.onCallRecipients;
-  const participants = next ? data.nextOnCallParticipants : data.onCallParticipants;
+/**
+ * Walks the nested participant tree into a flat list of {id, type}.
+ *
+ * `noone` is the API's sentinel for an unfilled slot in a rotation — it is a
+ * real enum value, not a responder, and rendering it would put a uuid where a
+ * person should be.
+ */
+export function flattenParticipants(participants: OnCallParticipant[]): Responder[] {
+  const out: Responder[] = [];
 
-  const names = recipients?.length ? recipients : flattenParticipants(participants ?? []);
+  for (const p of participants) {
+    if (p.id && p.type !== "noone" && p.type !== "none") {
+      out.push({
+        id: p.id,
+        ...(p.type ? { type: p.type } : {}),
+        ...(p.name ? { name: p.name } : {}),
+      });
+    }
 
+    // next-on-calls nests its children under a different key than on-calls.
+    const children = p.onCallParticipants ?? p.nextOnCallParticipants;
+    if (children?.length) out.push(...flattenParticipants(children));
+
+    const forwarded = unwrapForward(p.forwardedFrom);
+    if (forwarded?.id) {
+      out.push({
+        id: forwarded.id,
+        type: forwarded.type ?? "user",
+        forwarded: true,
+        ...(forwarded.name ? { name: forwarded.name } : {}),
+      });
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Pulls the responders out of an on-call response, whichever shape it arrived in.
+ *
+ * `flat=true` returns bare ids under `onCallUsers`/`nextOnCallUsers`;
+ * `flat=false` returns the participant tree. The `*Recipients` fallbacks are
+ * the Opsgenie names — reading ONLY those is what made this tool report
+ * "Nobody is on-call" for a schedule that had someone on it, so the documented
+ * name is read first and the legacy one is a fallback, never the reverse.
+ */
+export function extractOnCall(data: OnCallData, next: boolean): Responder[] {
+  const users = next
+    ? (data.nextOnCallUsers ?? data.nextOnCallRecipients)
+    : (data.onCallUsers ?? data.onCallRecipients);
+
+  if (users?.length) return users.map((id) => ({ id, type: "user" }));
+
+  const participants = next
+    ? (data.nextOnCallParticipants ?? data.onCallParticipants)
+    : data.onCallParticipants;
+
+  return dedupe(flattenParticipants(participants ?? []));
+}
+
+/**
+ * Collapses repeated ids, keeping the first mention.
+ *
+ * One person routinely appears twice in an unflattened tree — once directly and
+ * again inside an escalation that expands to them. Listing them twice reads as
+ * two responders, which is the wrong answer to "how many people are on call".
+ */
+function dedupe(responders: Responder[]): Responder[] {
+  const seen = new Map<string, Responder>();
+  for (const responder of responders) {
+    if (!seen.has(responder.id)) seen.set(responder.id, responder);
+  }
+  return [...seen.values()];
+}
+
+/**
+ * One responder as the API described it, before any directory lookup.
+ *
+ * `name` is only ever populated by a legacy Opsgenie-shaped response; JSM
+ * Operations sends ids alone, which is why resolution exists.
+ */
+export interface Responder {
+  id: string;
+  type?: string;
+  name?: string;
+  /**
+   * Set when this person is listed because they forwarded their shift. Kept
+   * separate from `type` so the responder is still a *user* for lookup
+   * purposes — overloading `type` with "forwarded" meant the forwarding
+   * person was the one name on the page that never got resolved.
+   */
+  forwarded?: boolean;
+}
+
+/**
+ * Merges what the API said about a responder with what the directory lookup
+ * found, so the markdown and the structured payload cannot disagree.
+ *
+ * A name the API itself supplied is used when the lookup found nothing —
+ * dropping it would be a regression for any tenant still on the legacy shape.
+ */
+export function identifyResponders(
+  responders: Responder[],
+  directory?: Directory,
+): ResolvedIdentity[] {
+  return responders.map((responder) => {
+    const resolved = directory?.names.get(responder.id);
+    const forwarded = responder.forwarded ? { forwarded: true } : {};
+
+    if (resolved) {
+      return { ...resolved, ...(responder.type ? { type: responder.type } : {}), ...forwarded };
+    }
+
+    return {
+      id: responder.id,
+      ...(responder.type ? { type: responder.type } : {}),
+      ...(responder.name ? { displayName: responder.name } : {}),
+      ...forwarded,
+    };
+  });
+}
+
+export interface OnCallRenderOptions {
+  /** What to call the schedule in the heading. The API returns no name here. */
+  scheduleLabel: string;
+  /** Resolved responder names, where the directory lookup found any. */
+  directory?: Directory;
+  /**
+   * The shift these responders are covering. Its absence is why the on-call
+   * tools could not answer "when does this end?" before.
+   */
+  shift?: ShiftSummary;
+  /** Anything the reader needs to know about what could not be determined. */
+  notes?: string[];
+  /** Opsgenie's `exactNextOnCallTime`, when a tenant still sends it. */
+  legacyShiftStart?: string | undefined;
+}
+
+/** The boundary information a shift contributes to an answer. */
+export interface ShiftSummary {
+  start?: string;
+  end?: string;
+  rotationName?: string;
+  type?: string;
+  forwardedFrom?: { id?: string };
+}
+
+/**
+ * Renders a shift's boundaries.
+ *
+ * Both ends are stated explicitly rather than as a duration: "until 09:00 UTC
+ * tomorrow" is what a handover message needs, and a relative figure goes stale
+ * the moment it is written down.
+ */
+export function renderShift(shift: ShiftSummary, next: boolean): string[] {
+  const lines: string[] = [];
+  const rotation = shift.rotationName ? ` (${shift.rotationName})` : "";
+
+  if (shift.start && shift.end) {
+    lines.push(
+      `${next ? "Shift" : "Current shift"}: ${timestamp(shift.start)} → ${timestamp(shift.end)}${rotation}`,
+    );
+  } else if (shift.start) {
+    lines.push(`Shift starts: ${timestamp(shift.start)}${rotation}`);
+  } else if (shift.end) {
+    lines.push(`Shift ends: ${timestamp(shift.end)}${rotation}`);
+  }
+
+  // An override or a forward explains why the person on-call is not who the
+  // base rotation would suggest — worth surfacing rather than burying.
+  if (shift.type === "override") lines.push("This period is an override.");
+  if (shift.type === "forwarding") lines.push("This period is forwarded.");
+
+  return lines;
+}
+
+/**
+ * Renders an on-call answer.
+ *
+ * Takes the responders rather than the raw payload on purpose: they may have
+ * come from the timeline rather than the on-call endpoint, and re-deriving them
+ * here from a payload the caller might not have used would quietly disagree
+ * with the structured output sitting beside it.
+ */
+export function renderOnCall(
+  responders: Responder[],
+  next: boolean,
+  options: OnCallRenderOptions,
+): string {
   const heading = next
-    ? `# Next on-call for ${scheduleName}`
-    : `# Currently on-call for ${scheduleName}`;
+    ? `# Next on-call for ${options.scheduleLabel}`
+    : `# Currently on-call for ${options.scheduleLabel}`;
 
   const lines = [heading, ""];
-  if (!names.length) {
+
+  if (!responders.length) {
     lines.push("_Nobody is on-call for this schedule at the requested time._");
     return lines.join("\n");
   }
 
-  for (const name of names) lines.push(`- ${name}`);
-  if (next && data.exactNextOnCallTime)
-    lines.push("", `Shift starts: ${timestamp(data.exactNextOnCallTime)}`);
+  for (const identity of identifyResponders(responders, options.directory)) {
+    lines.push(`- ${renderIdentity(identity)}`);
+  }
+
+  if (options.shift) {
+    const shiftLines = renderShift(options.shift, next);
+    if (shiftLines.length) lines.push("", ...shiftLines);
+  } else if (next && options.legacyShiftStart) {
+    // Opsgenie returned this; JSM Operations does not. Kept so a tenant that
+    // still sends it does not lose the information.
+    lines.push("", `Shift starts: ${timestamp(options.legacyShiftStart)}`);
+  }
+
+  for (const note of options.notes ?? []) lines.push("", `_${note}_`);
+  if (options.directory?.note) lines.push("", `_${options.directory.note}_`);
+
+  return lines.join("\n");
+}
+
+export interface TimelineRenderOptions {
+  scheduleLabel: string;
+  directory?: Directory;
+}
+
+/** One period of a rotation, as the timeline tool renders it. */
+export interface RenderableShift extends ShiftSummary {
+  responders: Array<{ id?: string; type?: string }>;
+}
+
+export function renderTimeline(shifts: RenderableShift[], options: TimelineRenderOptions): string {
+  const lines = [`# On-call timeline for ${options.scheduleLabel}`, ""];
+
+  if (!shifts.length) {
+    lines.push(
+      "_No rotation periods in this window. The schedule may have no rotations configured, or none covering these dates._",
+    );
+    return lines.join("\n");
+  }
+
+  for (const shift of shifts) {
+    const rotation = shift.rotationName ? `**${shift.rotationName}** — ` : "";
+    // Both ends on one line: reading a rota means scanning boundaries, and a
+    // shift split across lines makes that scan much harder.
+    lines.push(`- ${rotation}${timestamp(shift.start)} → ${timestamp(shift.end)}`);
+
+    const names = shift.responders
+      .map((responder) =>
+        renderIdentity({
+          id: responder.id ?? "unknown",
+          ...(responder.type ? { type: responder.type } : {}),
+          ...options.directory?.names.get(responder.id ?? ""),
+        }),
+      )
+      .join(", ");
+
+    lines.push(`  - ${names || "_nobody_"}`);
+    if (shift.type && shift.type !== "base") lines.push(`  - _${shift.type}_`);
+  }
+
+  if (options.directory?.note) lines.push("", `_${options.directory.note}_`);
+
   return lines.join("\n");
 }
 

@@ -38,16 +38,26 @@ export interface Alert {
   createdAt?: string;
   updatedAt?: string;
   lastOccurredAt?: string;
+  /** The API's own spelling, with one "r". Not a typo here — it is theirs. */
+  lastOccuredAt?: string;
   ownerTeamId?: string;
   responders?: AlertResponder[];
   teams?: AlertResponder[];
   integration?: { id?: string; name?: string; type?: string };
+  /** JSM Operations returns these flat rather than under `integration`. */
+  integrationName?: string;
+  integrationType?: string;
+  /** JSM Operations calls this `seen`; Opsgenie called it `isSeen`. */
+  seen?: boolean;
   report?: {
     ackTime?: number;
     closeTime?: number;
     acknowledgedBy?: string;
     closedBy?: string;
   };
+  /** JSM Operations returns these at the top level instead of under `report`. */
+  ackTime?: string;
+  closeTime?: string;
   /** Only present on the single-alert endpoint. */
   description?: string;
   details?: Record<string, string>;
@@ -57,16 +67,26 @@ export interface Alert {
 }
 
 export interface AlertNote {
+  /** The API's own identifier for the note. Opsgenie called this `offset`. */
+  id?: string;
   offset?: string;
   note: string;
   owner?: string;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface AlertLog {
   offset?: string;
   log: string;
   owner?: string;
+  /**
+   * JSM Operations sends `logTime`/`logType`; `createdAt`/`type` are the
+   * Opsgenie names. Reading only the latter rendered every activity-log line
+   * with a timestamp of "unknown".
+   */
+  logTime?: string;
+  logType?: string;
   createdAt?: string;
   type?: string;
 }
@@ -99,28 +119,110 @@ export interface Schedule {
   timezone?: string;
   enabled?: boolean;
   ownerTeam?: { id?: string; name?: string };
+  /** JSM Operations returns the owning team as a bare id. */
+  teamId?: string;
   rotations?: unknown[];
 }
 
 export interface OnCallParticipant {
   id?: string;
-  name?: string;
+  /** "user" | "team" | "escalation" | "noone". */
   type?: string;
   /** Present when the participant is an escalation/team that was expanded. */
   onCallParticipants?: OnCallParticipant[];
-  forwardedFrom?: { user?: OnCallParticipant };
+  /** next-on-calls nests under this name instead. */
+  nextOnCallParticipants?: OnCallParticipant[];
+  forwardedFrom?: OnCallParticipant;
+  /**
+   * Opsgenie returned a display name here. JSM Operations does not — every
+   * participant arrives as a bare id, which is what makes resolveParticipants
+   * (services/directory.ts) necessary rather than a nicety.
+   */
+  name?: string;
 }
 
+/**
+ * Response from /v1/schedules/{id}/on-calls and /next-on-calls.
+ *
+ * The field the responders arrive under depends on `flat`:
+ *   flat=true  -> onCallUsers / nextOnCallUsers   (bare account ids)
+ *   flat=false -> onCallParticipants / nextOnCallParticipants
+ *
+ * The `*Recipients` names below are Opsgenie-era and are NOT in the JSM
+ * Operations spec. Reading them cost us a real bug: the renderer looked only
+ * for `onCallRecipients`, found nothing, and reported "Nobody is on-call" while
+ * the JSON view showed a real person. They are retained purely so that a
+ * tenant whose backend still emits the legacy shape keeps working — read the
+ * documented name first and fall back, never the other way round.
+ */
 export interface OnCallData {
-  _parent?: { id?: string; name?: string; enabled?: boolean };
+  /** Returned when flat=true. */
+  onCallUsers?: string[];
+  nextOnCallUsers?: string[];
   /** Returned when flat=false. */
   onCallParticipants?: OnCallParticipant[];
-  /** Returned when flat=true. */
-  onCallRecipients?: string[];
-  /** next-on-calls only. */
   nextOnCallParticipants?: OnCallParticipant[];
+  /** Legacy Opsgenie names. Not documented by JSM Operations. */
+  onCallRecipients?: string[];
   nextOnCallRecipients?: string[];
+  /** Legacy Opsgenie fields. JSM Operations returns neither. */
+  _parent?: { id?: string; name?: string; enabled?: boolean };
   exactNextOnCallTime?: string;
+}
+
+/** One responder of an on-call period, as the timeline describes it. */
+export interface TimelineResponder {
+  id?: string;
+  /** "user" | "team" | "escalation" | "noone". */
+  type?: string;
+  deleted?: boolean;
+}
+
+/** A single continuous stretch of one rotation, with its real boundaries. */
+export interface TimelinePeriod {
+  startDate?: string;
+  endDate?: string;
+  /** "base" | "override" | "forwarding" | "historical". */
+  type?: string;
+  responder?: TimelineResponder;
+  /** Present on some period types only — never rely on it being here. */
+  flattenedResponders?: TimelineResponder[];
+  /** Set on forwarding periods: who the shift was forwarded from. */
+  from?: TimelineResponder;
+}
+
+export interface TimelineRotation {
+  id?: string;
+  name?: string;
+  order?: number;
+  deleted?: boolean;
+  periods?: TimelinePeriod[];
+}
+
+/**
+ * Response from /v1/schedules/{id}/timeline.
+ *
+ * `finalTimeline` is the one that matters: it is the schedule after overrides
+ * and forwarding have been applied, which is what "who is actually on-call"
+ * means. The other layers are only returned when explicitly expanded.
+ */
+export interface ScheduleTimeline {
+  startDate?: string;
+  endDate?: string;
+  finalTimeline?: { rotations?: TimelineRotation[] };
+  baseTimeline?: { rotations?: TimelineRotation[] };
+  overrideTimeline?: { rotations?: TimelineRotation[] };
+  forwardingTimeline?: { rotations?: TimelineRotation[] };
+}
+
+/** A responder id resolved to something a human can act on. */
+export interface ResolvedIdentity {
+  id: string;
+  type?: string;
+  displayName?: string;
+  emailAddress?: string;
+  /** Set when this person is on-call because they forwarded their shift. */
+  forwarded?: boolean;
 }
 
 /**

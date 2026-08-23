@@ -9,7 +9,7 @@
  */
 
 import axios, { type AxiosError, type AxiosInstance } from "axios";
-import { API_ROOT, REQUEST_TIMEOUT_MS } from "../constants.js";
+import { API_ROOT, JIRA_API_ROOT, REQUEST_TIMEOUT_MS } from "../constants.js";
 import type { Paged } from "../types.js";
 
 export interface JsmConfig {
@@ -55,10 +55,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): JsmConfig {
 
 export class JsmClient {
   private readonly http: AxiosInstance;
+  /**
+   * Second instance for the Jira platform API, which lives behind a different
+   * gateway path than JSM Operations but takes the same credentials and the
+   * same cloudId. Used only to resolve account ids to display names.
+   */
+  private readonly jira: AxiosInstance;
 
   constructor(config: JsmConfig) {
-    this.http = axios.create({
-      baseURL: `${API_ROOT}/${config.cloudId}`,
+    const common = {
       timeout: REQUEST_TIMEOUT_MS,
       headers: {
         Accept: "application/json",
@@ -68,7 +73,10 @@ export class JsmClient {
       ...(config.oauthToken
         ? {}
         : { auth: { username: config.email!, password: config.apiToken! } }),
-    });
+    };
+
+    this.http = axios.create({ ...common, baseURL: `${API_ROOT}/${config.cloudId}` });
+    this.jira = axios.create({ ...common, baseURL: `${JIRA_API_ROOT}/${config.cloudId}` });
   }
 
   /**
@@ -103,9 +111,24 @@ export class JsmClient {
 
     const items = (raw.data ?? raw.values ?? []) as T[];
     const paging = (raw.paging ?? raw.links) as Paged<T>["paging"] | undefined;
-    const totalCount = typeof raw.totalCount === "number" ? raw.totalCount : undefined;
+    // The alerts endpoint reports the grand total under `count`, not
+    // `totalCount` — reading only the latter is why `pagination.total` was
+    // never populated.
+    const rawTotal = raw.totalCount ?? raw.count;
+    const totalCount = typeof rawTotal === "number" ? rawTotal : undefined;
 
     return { items: Array.isArray(items) ? items : [], paging, totalCount };
+  }
+
+  /**
+   * GET against the Jira platform API rather than JSM Operations.
+   *
+   * Deliberately does no envelope unwrapping: the Jira API has its own
+   * conventions and callers here want the body as-is.
+   */
+  async jiraGet<T>(path: string, params?: Record<string, unknown>): Promise<T> {
+    const response = await this.jira.request<T>({ method: "GET", url: path, params });
+    return response.data;
   }
 
   /** GET for endpoints returning a single object under `data`/`values`. */

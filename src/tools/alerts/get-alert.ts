@@ -3,6 +3,7 @@
  */
 
 import { type JsmClient, handleApiError } from "../../services/client.js";
+import { resolveIdentities } from "../../services/directory.js";
 import { fail, renderAlertDetail, renderFormat } from "../../services/format.js";
 import type { Alert } from "../../types.js";
 import { defineTool } from "../define.js";
@@ -20,7 +21,7 @@ Args:
   - identifier_type ('id' | 'alias'): default 'id'
   - response_format ('markdown' | 'json'): default 'markdown'
 
-Returns (json format): a single alert object with id, tinyId, message, description, status, acknowledged, snoozed, priority, source, owner, tags, responders, details (custom key/value map), extraProperties, count, createdAt, updatedAt, lastOccurredAt, and a report block with acknowledgedBy/closedBy.
+Returns (json format): a single alert object with id, tinyId, message, description, status, acknowledged, snoozed, priority, source, owner, tags, responders, details (custom key/value map), extraProperties, count, createdAt, updatedAt, lastOccurredAt, and a report block with acknowledgedBy/closedBy. Responder ids are resolved to names where the credentials allow it.
 
 Examples:
   - "What does alert #4821 actually say?" -> resolve the id via jsm_list_alerts, then call with identifier=<full id>
@@ -52,7 +53,18 @@ Error handling:
         );
       }
 
-      return renderFormat(params.response_format, renderAlertDetail(alert), { alert });
+      // Responders come back as bare {id, type}. Resolving them here is what
+      // keeps "who is on this alert?" answerable without a second lookup.
+      const responders = [...(alert.responders ?? []), ...(alert.teams ?? [])]
+        .filter((responder) => responder.id)
+        .map((responder) => ({
+          id: responder.id!,
+          ...(responder.type ? { type: responder.type } : {}),
+        }));
+
+      const directory = responders.length ? await resolveIdentities(client, responders) : undefined;
+
+      return renderFormat(params.response_format, renderAlertDetail(alert, directory), { alert });
     } catch (error) {
       return fail(handleApiError(error, "get alert"));
     }

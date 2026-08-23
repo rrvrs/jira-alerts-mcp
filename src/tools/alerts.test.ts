@@ -63,7 +63,10 @@ describe("jsm_list_alerts window guard", () => {
     assert.equal(calls.length, 1);
   });
 
-  it("passes the search arguments through to the alerts endpoint", async () => {
+  // The page-size parameter is `size`. Sending `limit` meant the API ignored it
+  // and served its own default of 20, so a caller asking for 50 got 20 — and,
+  // because has_more compared 20 against 50, was told that was all of them.
+  it("asks for the page size under the parameter the API actually reads", async () => {
     const { client, calls } = stubClient({ items: [alertFixture(1)] });
     const mcp = await connectTools(alertReadTools, client);
 
@@ -71,8 +74,56 @@ describe("jsm_list_alerts window guard", () => {
 
     assert.equal(calls[0]?.path, "/v1/alerts");
     assert.equal(calls[0]?.params?.query, "status:open");
-    assert.equal(calls[0]?.params?.limit, 50);
+    assert.equal(calls[0]?.params?.size, 50);
+    assert.equal(calls[0]?.params?.limit, undefined);
     assert.equal(calls[0]?.params?.offset, 10);
+  });
+
+  it("sends the page size on every list tool, not just alerts", async () => {
+    const { client, calls } = stubClient({ items: [{ note: "n", owner: "ada@example.com" }] });
+    const mcp = await connectTools(alertReadTools, client);
+
+    await callTool(mcp, "jsm_list_alert_notes", { alert_id: "a-1", limit: 30 });
+
+    assert.equal(calls[0]?.params?.size, 30);
+    assert.equal(calls[0]?.params?.limit, undefined);
+  });
+
+  // These endpoints page by opaque cursor under `after`; `offset` is not a
+  // parameter they have, so paging used to silently re-serve the first page.
+  it("pages notes and logs with the cursor parameter they document", async () => {
+    const { client, calls } = stubClient({ items: [{ log: "alert created", owner: "system" }] });
+    const mcp = await connectTools(alertReadTools, client);
+
+    await callTool(mcp, "jsm_list_alert_logs", { alert_id: "a-1", offset: "1492000072838" });
+
+    assert.equal(calls[0]?.params?.after, "1492000072838");
+    assert.equal(calls[0]?.params?.offset, undefined);
+  });
+
+  // The API knows whether more records exist; a size comparison only guesses.
+  it("reports has_more from the API's own next link", async () => {
+    const { client } = stubClient({
+      items: [alertFixture(1)],
+      paging: { next: "/v1/alerts?offset=20&size=20" },
+    });
+    const mcp = await connectTools(alertReadTools, client);
+    const result = await callTool(mcp, "jsm_list_alerts", { limit: 100 });
+
+    const pagination = result.structuredContent?.pagination as Record<string, unknown>;
+    assert.equal(pagination.has_more, true);
+  });
+
+  it("hands back a re-sendable cursor, not the whole next-page URL", async () => {
+    const { client } = stubClient({
+      items: [{ note: "acked from the runbook", owner: "ada@example.com" }],
+      paging: { next: "/v1/alerts/a-1/notes?after=1492000072838" },
+    });
+    const mcp = await connectTools(alertReadTools, client);
+    const result = await callTool(mcp, "jsm_list_alert_notes", { alert_id: "a-1" });
+
+    const pagination = result.structuredContent?.pagination as Record<string, unknown>;
+    assert.equal(pagination.next_cursor, "1492000072838");
   });
 });
 

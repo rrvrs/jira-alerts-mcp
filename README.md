@@ -89,7 +89,7 @@ Most other MCP clients accept that same JSON shape.
 
 **4. Check it works.** Ask your agent to list your open alerts. That runs
 `jsm_list_alerts`, which needs no ids and confirms your credentials and the
-`read:ops-alert` scope that eight of the twelve tools share.
+`read:ops-alert` scope that eight of the thirteen tools share.
 
 Then ask who is on call, which runs `jsm_list_schedules`. That is a **separate**
 check, because schedules need `read:ops-config` — if alerts work and schedules
@@ -183,18 +183,26 @@ the single most common setup mistake:
 |---|---|
 | The 5 alert reads | `read:ops-alert:jira-service-management` |
 | The 4 alert writes | `read:ops-alert:…` **and** `write:ops-alert:…` — both |
-| `jsm_list_schedules`, `jsm_get_on_call`, `jsm_get_next_on_call` | `read:ops-config:jira-service-management` |
+| `jsm_list_schedules`, `jsm_get_on_call`, `jsm_get_next_on_call`, `jsm_get_schedule_timeline` | `read:ops-config:jira-service-management` |
+| Resolving responder ids to names (optional) | `read:user:jira` (granular) or `read:jira-user` (classic) |
 
-Two consequences worth knowing before you mint a token:
+Three consequences worth knowing before you mint a token:
 
 - **Writes need the read scope too.** A token carrying only
   `write:ops-alert:jira-service-management` fails. Atlassian requires the read
   scope alongside it on every write endpoint.
 - **`ops-config` is a separate grant, and a missing one returns 401, not 403.**
-  Omit it and the nine alert tools work perfectly while the three on-call tools
+  Omit it and the nine alert tools work perfectly while the four on-call tools
   fail — which reads like a broken credential and is not one. Both are supported
   configurations: granting only the read scopes, or only `ops-alert`, is a
   deliberate way to narrow what the agent can reach.
+- **The Jira user scope is optional, and its absence is visible rather than
+  silent.** Every responder the Operations API returns is a bare account id
+  (`712020:9ae5385e-…`); with the user scope the on-call tools resolve those to
+  names and emails in the same call. Without it they still answer — you get the
+  ids, plus one line saying which scope would have named them. Knowing who is
+  on-call matters more than knowing their display name, so a missing scope here
+  never turns into an error.
 
 **Team visibility.** The account also needs JSM Operations access on the relevant
 team. Alerts and schedules hang off a team's Operations page, so credentials that
@@ -251,6 +259,7 @@ still unacknowledged, and acknowledges it again.
 | `jsm_list_schedules` | `GET /v1/schedules` | read |
 | `jsm_get_on_call` | `GET /v1/schedules/{id}/on-calls` | read |
 | `jsm_get_next_on_call` | `GET /v1/schedules/{id}/next-on-calls` | read |
+| `jsm_get_schedule_timeline` | `GET /v1/schedules/{id}/timeline` | read |
 
 Deliberately **not** implemented: `DELETE /v1/alerts/{id}` and alert creation.
 Deleting alerts destroys audit history with no undo, and alert creation belongs

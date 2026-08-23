@@ -29,16 +29,32 @@ export const testConfig = loadConfig({
 
 export interface StubClient {
   client: JsmClient;
-  /** Every collection request the tool issued, in order. */
+  /** Every request the tool issued, in order — JSM and Jira alike. */
   calls: Array<{ path: string; params?: Record<string, unknown> | undefined }>;
 }
 
+export interface StubOptions {
+  /**
+   * Responses keyed by path substring, for tools that issue more than one GET
+   * (resolving a schedule name, then asking who is on-call). First match wins;
+   * anything unmatched falls back to `page`.
+   */
+  routes?: Array<{ match: string; page?: Paged<unknown>; one?: unknown; error?: unknown }>;
+  /** Response for client.jiraGet, or an error to throw from it. */
+  jira?: unknown;
+  jiraError?: unknown;
+}
+
 /**
- * A JsmClient that records requests and serves a fixed page, so tools can be
+ * A JsmClient that records requests and serves fixed responses, so tools can be
  * driven end to end without a network or a tenant.
  */
-export function stubClient(page: Paged<unknown> = { items: [] }): StubClient {
+export function stubClient(
+  page: Paged<unknown> = { items: [] },
+  options: StubOptions = {},
+): StubClient {
   const calls: StubClient["calls"] = [];
+  const route = (path: string) => options.routes?.find((r) => path.includes(r.match));
 
   const client = new (class extends JsmClient {
     override async getCollection<T>(
@@ -46,16 +62,35 @@ export function stubClient(page: Paged<unknown> = { items: [] }): StubClient {
       params?: Record<string, unknown>,
     ): Promise<Paged<T>> {
       calls.push({ path, params });
-      return page as Paged<T>;
+      const matched = route(path);
+      if (matched?.error) throw matched.error;
+      return (matched?.page ?? page) as Paged<T>;
     }
 
     override async getOne<T>(path: string, params?: Record<string, unknown>): Promise<T> {
       calls.push({ path, params });
+      const matched = route(path);
+      if (matched?.error) throw matched.error;
+      if (matched) return (matched.one ?? matched.page?.items[0] ?? {}) as T;
       return (page.items[0] ?? {}) as T;
+    }
+
+    override async jiraGet<T>(path: string, params?: Record<string, unknown>): Promise<T> {
+      calls.push({ path, params });
+      if (options.jiraError) throw options.jiraError;
+      return (options.jira ?? {}) as T;
     }
   })(testConfig);
 
   return { client, calls };
+}
+
+/** An axios-shaped error, for exercising the API error paths. */
+export function httpError(status: number): Error & { isAxiosError: true } {
+  return Object.assign(new Error(`HTTP ${status}`), {
+    isAxiosError: true as const,
+    response: { status, data: {} },
+  });
 }
 
 /**

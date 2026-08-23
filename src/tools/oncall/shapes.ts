@@ -21,7 +21,9 @@ export const onCallShape = {
   schedule_identifier_type: z
     .enum(["id", "name"])
     .default("id")
-    .describe("Whether schedule_id holds an id or a schedule name."),
+    .describe(
+      "Whether schedule_id holds an id or a schedule name. A name costs one extra lookup, because every schedule endpoint takes an id.",
+    ),
   flat: z
     .boolean()
     .default(true)
@@ -39,4 +41,32 @@ export const currentOnCallShape = {
     .describe(
       "ISO 8601 timestamp to evaluate the rotation at, e.g. '2026-08-21T18:30:00Z'. Defaults to now. Use this to answer 'who was on-call when this fired?'",
     ),
+};
+
+/**
+ * next-on-calls takes a `date` too — "next" is computed relative to it rather
+ * than to now, which is what makes "who is on after this shift?" answerable
+ * for any reference point instead of only the present moment.
+ */
+export const nextOnCallShape = {
+  ...onCallShape,
+  date: z
+    .string()
+    .optional()
+    .describe(
+      "ISO 8601 reference timestamp. The next shift is computed relative to this instant rather than to now, e.g. '2026-08-21T18:30:00Z'. Defaults to now.",
+    ),
+};
+
+/** jsm_get_schedule_timeline: a schedule, and a window to centre on. */
+export const timelineShape = {
+  schedule_id: onCallShape.schedule_id,
+  schedule_identifier_type: onCallShape.schedule_identifier_type,
+  date: z
+    .string()
+    .optional()
+    .describe(
+      "ISO 8601 instant the returned window should cover, e.g. '2026-08-27T12:00:00Z'. Defaults to now.",
+    ),
+  response_format: responseFormatField,
 };

@@ -77,9 +77,9 @@ Constraints and errors:
     return executeList<Alert>({
       client,
       path: "/v1/alerts",
+      // No page size here: executeList sends it as `size`.
       params: {
         query: params.query,
-        limit: params.limit,
         offset: params.offset,
         sort: params.sort,
         order: params.order,
