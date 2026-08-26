@@ -45,11 +45,17 @@ also the segment after `/s/` in the URL at
 
 ```bash
 claude mcp add jira-alerts-mcp \
+  --scope user \
   --env JSM_CLOUD_ID='your-cloud-id' \
   --env JSM_EMAIL='you@example.com' \
   --env JSM_API_TOKEN="${JSM_API_TOKEN}" \
   -- npx -y jira-alerts-mcp
 ```
+
+`--scope user` registers the server for your whole account rather than only the
+directory you happened to run the command in. That is what you want for an
+alerts server — you want it in every session. Without the flag `claude mcp add`
+defaults to `local` scope, and the server exists in that one directory only.
 
 *Claude Desktop:* open the config from the app rather than by hand — the **Claude
 menu in your menu bar** (not the settings inside the window) → Settings →
@@ -85,7 +91,9 @@ Then **quit Claude Desktop completely and reopen it** — the file is read only 
 startup, and closing the window is not quitting. The server then appears under
 the connectors panel in the message composer.
 
-Most other MCP clients accept that same JSON shape.
+Most other MCP clients accept that same JSON shape. There is no scope choice to
+make here — `claude_desktop_config.json` is already per-user, the same reach as
+`--scope user` on the CLI.
 
 **4. Check it works.** Ask your agent to list your open alerts. That runs
 `jsm_list_alerts`, which needs no ids and confirms your credentials and the
@@ -98,10 +106,13 @@ return 401, nothing is wrong with your token; see
 
 Things that catch people out: with `claude mcp add` the server name is the first
 positional argument, before any flags; `-y` on `npx` skips the install prompt,
-which an MCP client has no way to answer; and in zsh `${VAR}` needs quoting. For
-GUI-launched sessions the token has to live in the `env` block of the config
-itself — the shell environment isn't inherited, which is why the JSON above
-carries the credentials inline.
+which an MCP client has no way to answer; and in zsh `${VAR}` needs quoting. A
+server added without `--scope user` works in the directory you added it from and
+is simply missing everywhere else, with no error to explain the absence — if it
+seems to have disappeared, run `claude mcp list` from a different directory
+before touching anything else. For GUI-launched sessions the token has to live
+in the `env` block of the config itself — the shell environment isn't inherited,
+which is why the JSON above carries the credentials inline.
 
 **If the server never shows up in Claude Desktop**, two causes account for
 almost all of it, and neither announces itself:
