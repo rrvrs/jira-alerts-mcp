@@ -6,9 +6,9 @@ and verifies that the package really is the server it claims to be. So the
 npm publish has to land first; there is nothing for the registry to check
 until it does.
 
-Neither publish can be undone. The npm half now runs in CI off a version tag,
-so the credential that used to live on a maintainer's machine is gone; the
-registry half is still a maintainer running a command.
+Neither publish can be undone. Both halves now run in CI off a version tag, so
+the credential that used to live on a maintainer's machine is gone and neither
+half depends on anyone remembering to run it.
 
 ## 1. Bump the version
 
@@ -57,10 +57,11 @@ must contain no `*.test.js` and no `test-support.*` — CI checks this too.
 git tag -a v1.0.1 -m "v1.0.1" && git push origin v1.0.1
 ```
 
-That is the whole npm release. `.github/workflows/release.yml` fires on the tag,
-re-runs lint, typecheck, test, build and `check:manifests` on a clean checkout,
-verifies the tag matches `package.json` `version`, publishes, and creates the
-GitHub Release with notes grouped by PR label per `.github/release.yml`.
+That is the whole release, both halves. `.github/workflows/release.yml` fires on
+the tag, re-runs lint, typecheck, test, build and `check:manifests` on a clean
+checkout, verifies the tag matches `package.json` `version`, publishes to npm,
+publishes the MCP Registry listing (§4), mirrors to GitHub Packages, and creates
+the GitHub Release with notes grouped by PR label per `.github/release.yml`.
 
 Three things this buys over the old local `npm publish`. What ships is exactly
 the tagged commit, rather than whatever happened to be in a working directory.
@@ -149,20 +150,43 @@ second package:
   which is what makes a local bootstrap possible at all. `--dry-run` does not
   prove this either way, because npm skips provenance generation in a dry run.
 
-## 4. Publish to the MCP Registry
+## 4. The MCP Registry — also automatic
 
-Still manual, and deliberately so: `mcp-publisher` authenticates with a GitHub
-device-code flow that cannot run unattended.
+Nothing to run. `release.yml` publishes the listing straight after the npm
+publish, in the same job.
 
-```bash
-brew install mcp-publisher
-mcp-publisher login github
-mcp-publisher publish
-```
+This used to be manual because `mcp-publisher login github` is a device-code
+flow that cannot run unattended. `login github-oidc` replaces it: the registry
+accepts the workflow's OIDC token and grants
+`io.github.<repository_owner>/*` — `io.github.rrvrs/*` here, which covers this
+server. It reuses the `id-token: write` permission npm trusted publishing
+already required, so no new secret and no new grant.
 
-The GitHub account must own the `rrvrs` namespace — that is what entitles this
-server to the `io.github.rrvrs/` prefix. `mcp-publisher` reads `server.json`
-from the working directory.
+It is automated because the manual step was not surviving contact with reality:
+the listing sat at **1.0.1 while npmjs was at 1.1.0** — 1.0.2 through 1.1.0 were
+published to npm and never to the registry. A step that is skipped five releases
+running is not a step, and the registry drifting is worse than it sounds because
+the listing is how the server is discovered.
+
+Two properties it inherits from the steps around it:
+
+- **It runs after the npm publish, never before.** The registry resolves the npm
+  package named in `server.json` and checks its `mcpName` matches. Submit first
+  and it rejects you, because there is nothing to verify yet.
+- **It is skip-if-present.** If the version is already listed the step logs a
+  notice and exits, so a release that fails later is safe to re-run. If the
+  registry cannot be reached for that check, the step warns and attempts the
+  publish rather than abandoning the release.
+
+`mcp-publisher` is pinned to a release tag rather than `latest`, for the reason
+every action here is pinned by SHA. Bumping it is a deliberate edit to
+`MCP_PUBLISHER_VERSION` in `release.yml`.
+
+If you ever do need to publish by hand — a registry outage during a release,
+say — that is still `brew install mcp-publisher && mcp-publisher login github &&
+mcp-publisher publish` from a clean checkout of the tag. The GitHub account must
+own the `rrvrs` namespace. `mcp-publisher` reads `server.json` from the working
+directory.
 
 ## 5. Verify the listing
 
