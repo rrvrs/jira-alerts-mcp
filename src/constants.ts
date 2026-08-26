@@ -25,7 +25,7 @@ export const MAX_LIMIT = 100;
 
 /** Server identity reported over the MCP handshake. */
 export const SERVER_NAME = "jira-alerts-mcp";
-export const SERVER_VERSION = "1.1.0";
+export const SERVER_VERSION = "1.1.1";
 
 /**
  * Root of the Jira platform REST API, used only to turn account ids into
