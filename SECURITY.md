@@ -39,6 +39,29 @@ Schedules and on-call are a third, separate grant: `read:ops-config:jira-service
 - **A client config holding the token is still a credential at rest.** The distinction above is about the *server*: it reads only its environment. But a GUI client has no shell environment to inherit, so `claude_desktop_config.json` and the equivalents hold the token in plaintext, readable by anything running as that user. That file deserves the same care as any other secret on disk, and it is a further reason to give the server its own service account rather than a human's personal token.
 - **Alert content is untrusted input.** Alert messages, descriptions and notes are written by whatever integration fired them and are rendered into the model's context. Text inside an alert is data, not instructions — an agent acting on alerts should treat it that way.
 
+## Security alerts on the npm page
+
+The package page on npmjs.com renders a supply-chain analysis from Socket. It scans the whole installed dependency tree, not just the files this package publishes, and attributes what it finds to the page of every dependent. Four alerts currently show there. All four come from dependencies; none describe code in this package. They are worth understanding rather than dismissing, so:
+
+- **"Dynamic code execution (eval)"** — this is [`ajv`](https://www.npmjs.com/package/ajv), reached through `@modelcontextprotocol/sdk`. A JSON Schema validator turns schemas into validator functions with `new Function`; that is how the library works, and it is what validates MCP messages. There is no `eval`, `new Function` or `vm` usage anywhere in `src/`.
+- **"Accesses the system shell"** — this is [`cross-spawn`](https://www.npmjs.com/package/cross-spawn), also via the SDK, which needs `child_process` because the SDK ships a stdio *client* transport that launches MCP servers as subprocesses. This package is a server and never calls it. Nothing in `src/` imports `child_process`.
+- **A finding describing a shopping cart, unescaped HTML and `origin: '*'` CORS** — this is the SDK's `dist/examples/server/elicitationUrlExample.js`, a demo that ships inside its tarball because the SDK's `files` is `["dist"]` and `dist/examples/` sits within it. Nothing in `src/` imports from `examples/`, so it is dead code in your install. This server has no cart, no sessions, no elicitation, and emits no HTML at all — every response is JSON.
+- **"Can be replaced with a Socket optimized override"** — a vendor suggestion, not a finding about this package.
+
+What this package itself does, for comparison: `files` is `["dist"]`, so tests, sources and `scripts/` are not published. It installs no CORS middleware. The HTTP transport binds `127.0.0.1` by default and validates the `Host` header, as described above. Credentials are read from the environment and never serialised into an error or a log line — the error handler reads only the HTTP status, the API's `message` field and the network error code, never the request config that carries the `Authorization` header.
+
+None of this makes the alerts wrong to investigate. It means the answer is upstream: excluding `examples` from the SDK's published files would clear the third one for every dependent at once.
+
+## What runs on this repository
+
+Three checks, with different reach — none of them a guarantee about any particular moment:
+
+- [CodeQL](.github/workflows/codeql.yml) analyses this repository's TypeScript on every push, every pull request, and weekly. It does not analyse dependencies.
+- [Dependency review](.github/workflows/dependency-review.yml) fails a pull request that *introduces* a dependency carrying a known high-severity advisory. It sees only what a pull request changes, so it never re-examines the existing tree.
+- [Dependency audit](.github/workflows/audit.yml) runs `npm audit --audit-level=high` against the whole installed tree on every pull request and weekly, and files an issue when a scheduled run fails. This is the one that catches an advisory published against a dependency already in the lockfile.
+
+The last two are deliberately **not** required status checks. A supply-chain finding should be visible on the pull request, not a gate that blocks unrelated work until someone waives it.
+
 ## Out of scope
 
 - Vulnerabilities in the Atlassian JSM Operations API itself — report those to [Atlassian](https://www.atlassian.com/trust/security/report-vulnerability).

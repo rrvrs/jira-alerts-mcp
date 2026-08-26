@@ -1,0 +1,97 @@
+name: Dependency audit
+
+# Audits the *installed* tree against the advisory database.
+#
+# This is the gap the other two supply-chain checks leave open.
+# dependency-review.yml only inspects dependencies a pull request changes, so it
+# never re-examines what is already there; CodeQL analyses our own TypeScript,
+# not the tree. An advisory published against a dependency we already ship would
+# otherwise reach nobody.
+#
+# Deliberately its OWN workflow rather than a job in ci.yml. check-manifests.mjs
+# asserts that every job in ci.yml is a required status check, so putting it
+# there would make it blocking — and a fresh advisory in a transitive dependency
+# would then stop every unrelated pull request from merging. Same reasoning as
+# dependency-review.yml: the finding should be visible, not a gate a maintainer
+# has to wait out.
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly. Offset from codeql.yml's 04:27 so the two don't land together.
+    - cron: '41 5 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Audit dependencies
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      # Only used by the scheduled path, which files an issue on a failure that
+      # no pull request is watching.
+      issues: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+
+      # No `npm ci`. `npm audit` resolves the tree from package-lock.json and
+      # queries the registry; it does not need node_modules, and installing
+      # would only make the job slower.
+      - name: npm audit
+        run: |
+          # Without pipefail the tee swallows npm's exit code and a failing
+          # audit reports success.
+          set -o pipefail
+          npm audit --audit-level=high 2>&1 | tee audit.log
+        # Matches dependency-review.yml's `fail-on-severity: high` rather than
+        # introducing a second threshold to keep in sync.
+
+      - name: File an issue for a scheduled failure
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # One open issue is enough. Without this, every weekly run reopens the
+          # same advisory until someone fixes it.
+          existing=$(gh issue list --state open --label dependencies \
+            --search 'in:title "npm audit"' --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Issue #${existing} is already open for this; not filing another."
+            exit 0
+          fi
+
+          {
+            echo "The weekly \`npm audit\` found a high-severity advisory in the dependency tree."
+            echo
+            echo "Filed by [\`audit.yml\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})."
+            echo "Nothing in a pull request triggered this — the advisory was published against a"
+            echo "dependency that was already installed."
+            echo
+            echo '```'
+            # Cap the excerpt: a tree-wide audit can run to hundreds of lines,
+            # and the run log has the whole thing.
+            head -c 40000 audit.log
+            echo '```'
+          } > issue.md
+
+          gh issue create \
+            --title "npm audit: high-severity advisory in the dependency tree" \
+            --label dependencies \
+            --label security \
+            --body-file issue.md
