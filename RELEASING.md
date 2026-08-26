@@ -163,10 +163,19 @@ server. It reuses the `id-token: write` permission npm trusted publishing
 already required, so no new secret and no new grant.
 
 It is automated because the manual step was not surviving contact with reality:
-the listing sat at **1.0.1 while npmjs was at 1.1.0** — 1.0.2 through 1.1.0 were
-published to npm and never to the registry. A step that is skipped five releases
-running is not a step, and the registry drifting is worse than it sounds because
-the listing is how the server is discovered.
+**1.0.0, 1.0.2 and 1.0.5 are on npmjs and were never listed.** The registry keeps
+every version rather than replacing the last one, so the gaps sit there
+permanently. That matters because the listing is how the server is discovered.
+
+Reading those gaps correctly takes some care, and getting it wrong is what the
+skip check in `release.yml` originally did. `?search=<name>` returns **every**
+published version, oldest first — so taking the first result reports `1.0.1` no
+matter how many releases have gone out. Add `&version=<exact>` and count the
+matches to ask whether one specific version is listed:
+
+```bash
+curl -s "https://registry.modelcontextprotocol.io/v0.1/servers?search=jira-alerts-mcp&version=1.1.1"
+```
 
 Two properties it inherits from the steps around it:
 

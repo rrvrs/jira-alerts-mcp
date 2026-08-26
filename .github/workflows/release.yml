@@ -110,9 +110,9 @@ jobs:
       # registry grants the caller `io.github.<repository_owner>/*` — which
       # covers io.github.rrvrs/jira-alerts-mcp. No device code, no secret.
       #
-      # It matters that this is automated rather than remembered: the listing
-      # sat at 1.0.1 while npmjs was at 1.1.0, because the manual step was
-      # missed five releases running.
+      # It matters that this is automated rather than remembered: 1.0.0, 1.0.2
+      # and 1.0.5 are on npmjs and were never listed, because the manual step
+      # depended on someone recalling it after the release had already shipped.
       #
       # Pinned rather than `latest/download`, for the same reason every action
       # here is pinned by SHA — a release should not pick up a new publisher
@@ -131,14 +131,19 @@ jobs:
           # fails after any publish has to be safe to re-run. A lookup failure
           # is not fatal: fall through and let the publish itself decide, rather
           # than abandoning a release because the registry was briefly down.
-          listed=""
-          if raw="$(curl -fsS --retry 3 'https://registry.modelcontextprotocol.io/v0.1/servers?search=jira-alerts-mcp')"; then
-            listed="$(printf '%s' "$raw" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);const m=(j.servers||[]).find(e=>e.server&&e.server.name==="io.github.rrvrs/jira-alerts-mcp");console.log(m&&m.server.version?m.server.version:"")})')"
+          #
+          # Ask for this exact version and count the hits. `?search=` alone
+          # returns EVERY published version of the server, oldest first, so
+          # reading "the" version off it reports 1.0.1 forever and the skip
+          # never fires.
+          found=0
+          if raw="$(curl -fsS --retry 3 "https://registry.modelcontextprotocol.io/v0.1/servers?search=jira-alerts-mcp&version=${ver}")"; then
+            found="$(printf '%s' "$raw" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);console.log((j.servers||[]).filter(e=>e.server&&e.server.name==="io.github.rrvrs/jira-alerts-mcp"&&e.server.version===process.argv[1]).length)})' "$ver")"
           else
             echo "::warning::could not reach the MCP Registry to check the listed version; attempting the publish anyway"
           fi
 
-          if [ "$listed" = "$ver" ]; then
+          if [ "$found" != "0" ]; then
             echo "::notice::$ver is already listed on the MCP Registry; skipping"
             exit 0
           fi
