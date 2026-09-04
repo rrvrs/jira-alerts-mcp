@@ -12,6 +12,17 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+
+    # Raise the declared range along with the lockfile, not just the lockfile.
+    #
+    # check-manifests.mjs asserts that every declared floor is >= the version
+    # actually installed, because a floor that rots below what we run is a
+    # promise we never tested. Dependabot's npm default is
+    # increase-if-necessary, which leaves package.json alone whenever the
+    # existing range already admits the new version — ^1.19.0 happily resolves
+    # 1.20.0 — so a minor bump lands as a lockfile-only diff and fails that
+    # check every time. `increase` is the strategy that agrees with the policy.
+    versioning-strategy: increase
     labels: [dependencies]
     groups:
       # The SDK is the one dependency whose minor releases change behaviour we
