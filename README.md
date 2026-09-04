@@ -20,6 +20,22 @@ Twelve tools, four of them writes.
 
 ---
 
+## Demo
+
+<div align="center">
+
+![An agent answering who is on call, listing the open alerts, then acknowledging one and reading the applied acknowledgement back](https://raw.githubusercontent.com/rrvrs/jira-alerts-mcp/main/docs/demo.gif)
+
+</div>
+
+Three questions in one session, against a live JSM site: who is on call, what is
+open, and acknowledge what isn't. Watch the last answer in particular — the agent
+confirms the acknowledgement actually landed (`ack landed 16:38:00.577Z`) instead
+of assuming it did, which is the asynchronous-write behaviour described under
+[What this server handles for you](#what-this-server-handles-for-you).
+
+---
+
 ## Quickstart
 
 **You need** Node ≥ 24 and an Atlassian Cloud site with JSM Operations enabled.
