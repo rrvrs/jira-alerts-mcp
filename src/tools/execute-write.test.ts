@@ -247,3 +247,80 @@ describe("paging dialects", () => {
     assert.equal(calls[0]?.itemsKey, "platformTeams");
   });
 });
+
+describe("jsm_create_alert", () => {
+  it("posts to the collection endpoint, not to an action under an id", async () => {
+    const { client, calls } = stubClient({ items: [] }, { write: { requestId: "req-9" } });
+    const mcp = await connectTools(alertActionTools, client);
+
+    await callTool(mcp, "jsm_create_alert", { message: "Payments API returning 503" });
+
+    assert.equal(calls[0]?.method, "POST");
+    assert.equal(calls[0]?.path, "/v1/alerts");
+  });
+
+  it("maps snake_case arguments onto the API's camelCase body", async () => {
+    const { client, calls } = stubClient({ items: [] }, { write: { requestId: "r" } });
+    const mcp = await connectTools(alertActionTools, client);
+
+    await callTool(mcp, "jsm_create_alert", {
+      message: "disk full",
+      visible_to: [{ id: "t1", type: "team" }],
+      extra_properties: { region: "us-east-1", retries: 3, backend: false },
+      responders: [{ id: "s1", type: "schedule" }],
+    });
+
+    const body = calls[0]?.body as Record<string, unknown>;
+    assert.deepEqual(body.visibleTo, [{ id: "t1", type: "team" }]);
+    assert.deepEqual(body.extraProperties, { region: "us-east-1", retries: 3, backend: false });
+    assert.deepEqual(body.responders, [{ id: "s1", type: "schedule" }]);
+    // The wrong-cased originals must not also be sent.
+    assert.equal("visible_to" in body, false);
+    assert.equal("extra_properties" in body, false);
+  });
+
+  it("echoes the alias, the only handle the caller has on a create", async () => {
+    const { client } = stubClient({ items: [] }, { write: { requestId: "r", result: "queued" } });
+    const mcp = await connectTools(alertActionTools, client);
+
+    const result = await callTool(mcp, "jsm_create_alert", {
+      message: "disk full",
+      alias: "disk-full-db1",
+    });
+
+    assert.deepEqual(result.structuredContent, {
+      requestId: "r",
+      result: "queued",
+      alias: "disk-full-db1",
+    });
+    assert.match(textOf(result), /disk-full-db1/);
+  });
+
+  it("does not print an empty id when no alias was given", async () => {
+    // There is no alert id yet on a create, so the receipt has to read as
+    // something other than "accepted for alert ``".
+    const { client } = stubClient({ items: [] }, { write: { requestId: "r" } });
+    const mcp = await connectTools(alertActionTools, client);
+
+    const result = await callTool(mcp, "jsm_create_alert", { message: "disk full" });
+
+    assert.match(textOf(result), /for a new alert/);
+    assert.doesNotMatch(textOf(result), /``/);
+    assert.equal("alias" in (result.structuredContent as object), false);
+  });
+
+  it("requires a message", async () => {
+    const { client } = stubClient({ items: [] }, { write: {} });
+    const mcp = await connectTools(alertActionTools, client);
+
+    const result = await callTool(mcp, "jsm_create_alert", { priority: "P1" });
+
+    assert.equal(result.isError, true);
+  });
+
+  it("is not marked idempotent, because without an alias it is not", async () => {
+    const create = alertActionTools.find((tool) => tool.name === "jsm_create_alert");
+    assert.equal(create?.annotations.idempotentHint, false);
+    assert.equal(create?.annotations.readOnlyHint, false);
+  });
+});

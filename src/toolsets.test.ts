@@ -30,10 +30,36 @@ async function connectServer(client: JsmClient, selection: Selection): Promise<C
 }
 
 describe("resolveSelection", () => {
-  it("registers exactly the pre-toolset thirteen when nothing is configured", () => {
-    // Frozen. An install that upgrades without changing its config must see the
-    // same tool list, and so the same auto-approval surface, as before.
-    assert.deepEqual(names(resolveSelection(allTools)), [...CORE_TOOL_NAMES]);
+  it("registers exactly this list when nothing is configured", () => {
+    // Written out rather than compared against CORE_TOOL_NAMES on purpose.
+    // Comparing the constant to itself would stay green through any edit and
+    // guard nothing; the point is that widening the default has to be typed
+    // twice, in a change that says why.
+    assert.deepEqual(names(resolveSelection(allTools)), [
+      "jsm_list_alerts",
+      "jsm_get_alert",
+      "jsm_list_alert_notes",
+      "jsm_list_alert_logs",
+      "jsm_get_request_status",
+      "jsm_create_alert",
+      "jsm_acknowledge_alert",
+      "jsm_close_alert",
+      "jsm_add_alert_note",
+      "jsm_add_alert_responder",
+      "jsm_list_schedules",
+      "jsm_get_on_call",
+      "jsm_get_next_on_call",
+      "jsm_get_schedule_timeline",
+    ]);
+  });
+
+  it("keeps CORE_TOOL_NAMES in step with the catalogue", () => {
+    // A name here that no tool answers to would silently shrink the default.
+    const known = new Set(allTools.map((tool) => tool.name));
+    assert.deepEqual(
+      CORE_TOOL_NAMES.filter((name) => !known.has(name)),
+      [],
+    );
   });
 
   it("does not treat an unset variable as a request for everything", () => {

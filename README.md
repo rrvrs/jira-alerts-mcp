@@ -113,7 +113,7 @@ make here — `claude_desktop_config.json` is already per-user, the same reach a
 
 **4. Check it works.** Ask your agent to list your open alerts. That runs
 `jsm_list_alerts`, which needs no ids and confirms your credentials and the
-`read:ops-alert` scope that eight of the thirteen tools share.
+`read:ops-alert` scope that nine of the fourteen tools share.
 
 Then ask who is on call, which runs `jsm_list_schedules`. That is a **separate**
 check, because schedules need `read:ops-config` — if alerts work and schedules
@@ -214,14 +214,14 @@ cut into named **toolsets** and you pick:
 | Name | What it registers | Scope |
 |---|---|---|
 | `alerts` | Alert reads: search, detail, notes, activity logs, request status | `read:ops-alert:…` |
-| `alert-actions` | Acknowledge, close, annotate, add responders | `read:` + `write:ops-alert:…` |
+| `alert-actions` | Create, acknowledge, close, annotate, add responders | `read:` + `write:ops-alert:…` |
 | `oncall` | Schedules, who is on call now and next, shift timelines | `read:ops-config:…` |
 
 Plus three **profiles**, which are bundles of the above:
 
 | Profile | Contents |
 |---|---|
-| `core` | **The default.** The thirteen tools that shipped before toolsets existed |
+| `core` | **The default.** The thirteen tools that shipped before toolsets existed, plus `jsm_create_alert` |
 | `responder` | `alerts` + `alert-actions` + `oncall` |
 | `all` | Every toolset |
 
@@ -235,7 +235,7 @@ startup with the valid names and a suggestion — a typo should not quietly leav
 you with fewer tools than you asked for.
 
 `core` and `responder` hold the same tools today, and are deliberately not the
-same mechanism. `core` is a frozen list of thirteen names, so upgrading never
+same mechanism. `core` is a frozen list of names, so upgrading never
 changes what your client sees or what it auto-approves; `responder` is derived
 from its toolsets and widens as families land.
 
@@ -251,7 +251,7 @@ the single most common setup mistake:
 | Tools | Scope |
 |---|---|
 | The 5 alert reads | `read:ops-alert:jira-service-management` |
-| The 4 alert writes | `read:ops-alert:…` **and** `write:ops-alert:…` — both |
+| The 5 alert writes | `read:ops-alert:…` **and** `write:ops-alert:…` — both |
 | `jsm_list_schedules`, `jsm_get_on_call`, `jsm_get_next_on_call`, `jsm_get_schedule_timeline` | `read:ops-config:jira-service-management` |
 | Resolving responder ids to names (optional) | `read:jira-user` |
 
@@ -327,6 +327,7 @@ still unacknowledged, and acknowledges it again.
 | `jsm_list_alert_notes` | `GET /v1/alerts/{id}/notes` | read |
 | `jsm_list_alert_logs` | `GET /v1/alerts/{id}/logs` | read |
 | `jsm_get_request_status` | `GET /v1/alerts/requests/{id}` | read |
+| `jsm_create_alert` | `POST /v1/alerts` | write |
 | `jsm_acknowledge_alert` | `POST /v1/alerts/{id}/acknowledge` | write |
 | `jsm_close_alert` | `POST /v1/alerts/{id}/close` | write |
 | `jsm_add_alert_note` | `POST /v1/alerts/{id}/notes` | write |
@@ -335,12 +336,17 @@ still unacknowledged, and acknowledges it again.
 | `jsm_get_on_call` | `GET /v1/schedules/{id}/on-calls` | read |
 | `jsm_get_next_on_call` | `GET /v1/schedules/{id}/next-on-calls` | read |
 | `jsm_get_schedule_timeline` | `GET /v1/schedules/{id}/timeline` | read |
+| `jsm_list_capabilities` | — (answers from configuration) | read |
 
-Not implemented yet: alert creation and `DELETE /v1/alerts/{id}`. Creation is a
-gap rather than a boundary — `POST /v1/alerts` is part of this API and needs only
-the `write:ops-alert:jira-service-management` scope the existing write tools
-already require — and it is planned. Deleting an alert destroys audit history
-with no undo, which is why it has waited. Open an issue if you need either
+`jsm_create_alert` pages people. A created alert enters the team's routing and
+escalation rules exactly as one raised by a monitoring integration would. Its
+`alias` is the de-duplication key: creating against an alias that already has an
+open alert increments that alert's count instead of raising a second one, which
+is what makes a retried create safe — and what makes a carelessly reused alias
+quietly do nothing.
+
+Not implemented yet: `DELETE /v1/alerts/{id}`. Deleting an alert destroys audit
+history with no undo, which is why it has waited. Open an issue if you need it
 sooner.
 
 ---

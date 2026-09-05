@@ -62,14 +62,19 @@ export const TOOLSET_INFO: Record<ToolsetName, ToolsetInfo> = {
 };
 
 /**
- * The tools that shipped before toolsets existed, named individually rather
- * than computed from toolsets.
+ * The default selection: the tools that shipped before toolsets existed, plus
+ * jsm_create_alert. Named individually rather than computed from toolsets.
  *
  * A computed default would silently grow every time a tool is added, and an
  * existing install would wake up to a changed tool list — and a changed
  * auto-approval surface — after a patch bump. Naming them freezes that: the
  * default moves only when someone edits this array and the snapshot test that
  * guards it, in a change that has to explain itself.
+ *
+ * It has moved once: jsm_create_alert was added, because a create tool nobody
+ * can see without reconfiguring is not a create tool. That widens the default
+ * auto-approval surface by one write, which is the cost, and it is why the
+ * snapshot below is a literal list rather than a reference to this array.
  */
 export const CORE_TOOL_NAMES = [
   "jsm_list_alerts",
@@ -77,6 +82,7 @@ export const CORE_TOOL_NAMES = [
   "jsm_list_alert_notes",
   "jsm_list_alert_logs",
   "jsm_get_request_status",
+  "jsm_create_alert",
   "jsm_acknowledge_alert",
   "jsm_close_alert",
   "jsm_add_alert_note",

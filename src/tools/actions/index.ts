@@ -12,8 +12,10 @@ import { acknowledgeAlert } from "./acknowledge.js";
 import { addAlertNote } from "./add-note.js";
 import { addAlertResponder } from "./add-responder.js";
 import { closeAlert } from "./close.js";
+import { createAlert } from "./create-alert.js";
 
 export const alertActionTools: AnyToolDefinition[] = [
+  createAlert,
   acknowledgeAlert,
   closeAlert,
   addAlertNote,

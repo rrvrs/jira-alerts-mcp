@@ -179,12 +179,12 @@ export function emptyResult(text: string, key: string, limit: number, offset?: n
  */
 export function renderDeleted(
   label: string,
-  subject?: { key: string; value: string; noun: string },
+  subject?: { key: string; value?: string | undefined; noun: string },
 ): ToolResult {
-  const target = subject ? ` for ${subject.noun} \`${subject.value}\`` : "";
+  const target = subject?.value ? ` for ${subject.noun} \`${subject.value}\`` : "";
   return ok(`${label} succeeded${target}. The API confirmed it with no response body.`, {
     deleted: true,
-    ...(subject ? { [subject.key]: subject.value } : {}),
+    ...(subject?.value !== undefined ? { [subject.key]: subject.value } : {}),
   });
 }
 
@@ -608,11 +608,14 @@ export function renderTimeline(shifts: RenderableShift[], options: TimelineRende
  */
 export function renderAsyncReceipt(
   action: string,
-  subject: { noun: string; id: string },
+  subject: { noun: string; id?: string | undefined },
   response: AsyncActionResponse,
 ): string {
+  // A create has no id yet — the receipt is all there is until the request
+  // resolves — so say "a new alert" rather than printing an empty backtick pair.
+  const target = subject.id ? `${subject.noun} \`${subject.id}\`` : `a new ${subject.noun}`;
   return [
-    `${action} request accepted for ${subject.noun} \`${subject.id}\`.`,
+    `${action} request accepted for ${target}.`,
     "",
     `- **Request id**: \`${response.requestId ?? "not returned"}\``,
     `- **Result**: ${response.result ?? "queued"}`,

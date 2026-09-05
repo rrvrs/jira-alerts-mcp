@@ -48,7 +48,7 @@ export interface WriteOptions<T> {
    * `noun` is the word the receipt uses, `value` is the id.
    * e.g. { key: "alert_id", noun: "alert", value: id }.
    */
-  subject?: { key: string; value: string; noun: string };
+  subject?: { key: string; value?: string | undefined; noun: string };
   /** Required for mode "sync": renders the object the API returned. */
   render?: (data: T) => string;
 }
@@ -58,7 +58,8 @@ export async function executeWrite<T>(
   options: WriteOptions<T>,
 ): Promise<ToolResult> {
   const { label, method, path, body, params, mode, subject, render } = options;
-  const subjectFields = subject ? { [subject.key]: subject.value } : {};
+  const subjectFields =
+    subject && subject.value !== undefined ? { [subject.key]: subject.value } : {};
 
   try {
     const response = await client.request<T>(method, path, {
@@ -85,11 +86,7 @@ export async function executeWrite<T>(
 
     const receipt = response as AsyncActionResponse;
     return ok(
-      renderAsyncReceipt(
-        label,
-        { noun: subject?.noun ?? "request", id: subject?.value ?? path },
-        receipt,
-      ),
+      renderAsyncReceipt(label, { noun: subject?.noun ?? "request", id: subject?.value }, receipt),
       {
         requestId: receipt.requestId,
         result: receipt.result,
