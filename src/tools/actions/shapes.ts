@@ -273,3 +273,21 @@ export const removeExtraPropertiesShape = {
     .describe("Property keys to remove. Keys, not values."),
   note: changeNoteField,
 };
+
+export const deleteAlertShape = {
+  ...actionBaseShape,
+  note: changeNoteField,
+};
+
+export const customActionShape = {
+  ...actionBaseShape,
+  action_name: z
+    .string()
+    .min(1)
+    .describe(
+      "Name of a custom action configured for your organisation's integrations. Not free text: an " +
+        "unrecognised name is accepted and then does nothing. Ask the user what actions exist rather " +
+        "than guessing a plausible one.",
+    ),
+  note: changeNoteField,
+};

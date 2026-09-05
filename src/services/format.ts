@@ -8,6 +8,7 @@ import { type Directory, renderIdentity } from "./directory.js";
 import { ResponseFormat } from "../schemas/common.js";
 import type {
   Alert,
+  AlertAttachment,
   AlertLog,
   AlertNote,
   AsyncActionResponse,
@@ -312,6 +313,17 @@ export function renderNote(note: AlertNote): string {
     `- **Created**: ${timestamp(note.createdAt)}`,
     ...(note.updatedAt ? [`- **Updated**: ${timestamp(note.updatedAt)}`] : []),
   ].join("\n");
+}
+
+export function renderAttachments(attachments: AlertAttachment[]): string {
+  if (!attachments.length) return "No attachments on this alert.";
+  return attachments
+    .map(
+      (attachment) =>
+        `- **${attachment.attachmentName ?? "unnamed"}** — added ${timestamp(attachment.insertedAt)}\n` +
+        `  - id: \`${attachment.id ?? "unknown"}\``,
+    )
+    .join("\n");
 }
 
 export function renderLogs(logs: AlertLog[]): string {

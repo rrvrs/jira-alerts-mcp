@@ -62,7 +62,7 @@ export const TOOLSET_INFO: Record<ToolsetName, ToolsetInfo> = {
 };
 
 /**
- * The default selection: the tools that shipped before toolsets existed, plus
+ * The `core` profile: the tools that shipped before toolsets existed, plus
  * jsm_create_alert. Named individually rather than computed from toolsets.
  *
  * A computed default would silently grow every time a tool is added, and an
@@ -71,10 +71,9 @@ export const TOOLSET_INFO: Record<ToolsetName, ToolsetInfo> = {
  * default moves only when someone edits this array and the snapshot test that
  * guards it, in a change that has to explain itself.
  *
- * It has moved once: jsm_create_alert was added, because a create tool nobody
- * can see without reconfiguring is not a create tool. That widens the default
- * auto-approval surface by one write, which is the cost, and it is why the
- * snapshot below is a literal list rather than a reference to this array.
+ * It is no longer the default — `responder` is — but it stays as a named
+ * profile so an install that wants exactly the old surface can ask for it by
+ * name rather than by listing thirteen tools.
  */
 export const CORE_TOOL_NAMES = [
   "jsm_list_alerts",
@@ -102,10 +101,26 @@ export const CORE_TOOL_NAMES = [
  * which is what makes it safe as the default.
  */
 export const PROFILES = {
-  core: { toolsets: ["alerts", "alert-actions", "oncall"], only: CORE_TOOL_NAMES },
   responder: { toolsets: ["alerts", "alert-actions", "oncall"] },
+  core: { toolsets: ["alerts", "alert-actions", "oncall"], only: CORE_TOOL_NAMES },
   all: { toolsets: TOOLSETS },
 } as const satisfies Record<string, { toolsets: readonly ToolsetName[]; only?: readonly string[] }>;
+
+/**
+ * What an unconfigured install registers.
+ *
+ * This was `core` while the alert family was half-built, so that upgrading
+ * could not change anyone's tool list. Now that the family is complete,
+ * defaulting to the thirteen-tool subset would mean most of this server is
+ * invisible unless you already knew to look — and jsm_list_capabilities would
+ * spend every conversation explaining that. `responder` is the whole
+ * alert-and-on-call surface, which is what someone installing an alerts server
+ * is asking for.
+ *
+ * This is a breaking change to an existing install's tool list and its
+ * auto-approval surface, and ships as a major version.
+ */
+export const DEFAULT_PROFILE = "responder";
 
 export type ProfileName = keyof typeof PROFILES;
 
@@ -205,10 +220,10 @@ export function resolveSelection(
   const requested = parseNames(rawNames);
   const readOnly = argv.includes("--read-only") || isTruthy(env.JSM_READ_ONLY);
 
-  // Nothing asked for is not an error and not "everything" — it is the frozen
-  // default. Falling back to the full catalogue would make a forgotten env var
-  // silently widen what an agent can do.
-  const effective = requested.length ? requested : ["core"];
+  // Nothing asked for is not an error and not "everything" — it is the default
+  // profile. Falling back to the full catalogue would make a forgotten env var
+  // silently widen what an agent can reach.
+  const effective = requested.length ? requested : [DEFAULT_PROFILE];
 
   const toolsets = new Set<ToolsetName>();
   const onlyNames = new Set<string>();
