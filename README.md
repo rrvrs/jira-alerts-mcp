@@ -210,23 +210,28 @@ the environment. Use the file as a checklist for your client's `env` block, or
 Both auth methods are not equivalent, and the difference is not documented by
 Atlassian. Verified against a live tenant on 2026-09-05:
 
-**An Atlassian account API token (`JSM_EMAIL` + `JSM_API_TOKEN`) carries the read
-and write ops scopes, but not the delete ones.** Every DELETE-based tool answers
-`401 Unauthorized; scope does not match` — the credentials are valid, the grant
-is missing. That is five tools:
+**The delete scopes are granted per token, not per authentication method.** Two
+Atlassian account API tokens for the same account behave differently: one was
+refused on every DELETE with `401 Unauthorized; scope does not match` — valid
+credentials, missing grant — and another completed the whole set. So a 401 on a
+delete is not a reason to abandon `JSM_EMAIL` + `JSM_API_TOKEN`. Reissue the
+token with the delete scopes included, or supply a 3LO or Forge OAuth token
+granted `delete:ops-alert:jira-service-management` as `JSM_OAUTH_TOKEN`. The 401
+handler says exactly this, so the model reports it rather than retrying.
 
-`jsm_delete_alert` · `jsm_delete_alert_note` · `jsm_remove_alert_tags` ·
-`jsm_remove_alert_extra_properties` · `jsm_delete_alert_attachment`
+The delete-backed alert tools are `jsm_delete_alert` · `jsm_delete_alert_note` ·
+`jsm_remove_alert_tags` · `jsm_remove_alert_extra_properties` ·
+`jsm_delete_alert_attachment`.
 
-They need a 3LO or Forge OAuth token granted
-`delete:ops-alert:jira-service-management`, supplied as `JSM_OAUTH_TOKEN`. The
-401 handler says exactly this, so the model reports it rather than retrying.
-
-**The alert attachment endpoints reject API tokens outright**, and the API's own
-OpenAPI document maps them to no OAuth scope at all — so there is no grant to
-request. `jsm_list_alert_attachments` and `jsm_get_alert_attachment` are
-registered because they are real endpoints, but treat them as unavailable on
-token auth.
+**The alert attachment endpoints are gated twice over.** The API's own OpenAPI
+document maps them to no OAuth scope at all, so a token missing the delete
+scopes is turned away at the gateway with the same bare
+`scope does not match` — which reads like an auth dead end and is not one. A
+fully scoped token reaches the API and is told `Feature not available in your
+plan` instead. On a site whose plan excludes attachments, no token opens them;
+`jsm_list_alert_attachments` and `jsm_get_alert_attachment` are registered
+because they are real endpoints, and the handler reports the plan limit as a
+plan limit rather than sending you off to widen a token.
 
 **Some actions depend on your JSM plan, not on your scopes.** On a Standard
 tenant, snooze, assign and custom actions are accepted and then fail out of band
@@ -563,8 +568,9 @@ Tools marked **destructive** carry `destructiveHint: true`, which is what MCP
 clients read to decide whether to prompt before running something. They are
 registered like any other tool — the annotation is the guardrail, not absence —
 and several of them need `delete:ops-alert:jira-service-management`, a separate
-grant from `write:ops-alert`. A token that can close alerts usually cannot delete
-them, and that is a sensible configuration rather than something to work around.
+grant from `write:ops-alert`. A token that can close alerts may well not be able
+to delete them, and that is a sensible configuration rather than something to
+work around.
 
 `jsm_delete_alert` is included and is almost never the right tool. Closing an
 alert takes it out of the open queue and keeps the record of who was paged and

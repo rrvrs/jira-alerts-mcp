@@ -201,6 +201,21 @@ function httpError(status: number, message?: string): AxiosError {
 }
 
 /** The newer endpoints answer with `errors: [{title, detail}]` and no message. */
+function httpErrorWithFieldMap(
+  status: number,
+  message: string | undefined,
+  errors: Record<string, string>,
+) {
+  const config = { headers: new AxiosHeaders() };
+  return new AxiosError("Request failed", "ERR_BAD_REQUEST", config, {}, {
+    status,
+    statusText: "",
+    headers: {},
+    config,
+    data: message ? { message, errors } : { errors },
+  } as never);
+}
+
 function httpErrorWithErrors(status: number, errors: Array<{ title?: string; detail?: string }>) {
   const config = { headers: new AxiosHeaders() };
   return new AxiosError(
@@ -256,27 +271,47 @@ describe("handleApiError", () => {
     assert.doesNotMatch(message, /wrong or revoked/);
   });
 
-  it("names the delete scope, and that API tokens do not carry it", () => {
-    // The finding this branch exists for: an Atlassian account API token has
-    // the read and write ops scopes but never the delete ones, so every
-    // DELETE-based tool fails until the user switches to OAuth. Without this
-    // the model retries the same call.
+  it("names the delete scope as a property of the token, not of API-token auth", () => {
+    // This branch was first written to say API tokens never carry the delete
+    // scopes, which was one token generalised into a rule. A second token on
+    // the same account carried them and completed every delete, so the
+    // message must not send the user off to rebuild an OAuth integration
+    // when reissuing the token is the shorter road.
     const message = handleApiError(httpError(401, "Unauthorized; scope does not match"), "ctx", {
       method: "DELETE",
       path: "/v1/alerts/{id}",
     });
     assert.match(message, /delete:ops-alert:jira-service-management/);
-    assert.match(message, /JSM_OAUTH_TOKEN/);
-    assert.match(message, /Do not retry with the same credentials/);
+    assert.match(message, /Reissue JSM_API_TOKEN/);
+    assert.match(message, /another token on the same account can hold it/);
+    assert.doesNotMatch(message, /API tokens carry the read and write ops scopes but NOT/);
   });
 
-  it("says attachments are a dead end rather than naming a scope to request", () => {
+  it("blames the plan, not the credentials, for attachments", () => {
+    // Also a corrected belief: a token missing the delete scopes is refused
+    // at the gateway, which looked like attachments rejecting API-token auth
+    // outright. A fully scoped token reached the API and was told the plan
+    // excludes the feature.
     const message = handleApiError(httpError(401, "Unauthorized; scope does not match"), "ctx", {
       method: "GET",
       path: "/v1/alerts/{id}/attachments",
     });
     assert.match(message, /no OAuth scope for them/);
-    assert.match(message, /unavailable/);
+    assert.match(message, /plan/);
+    assert.doesNotMatch(message, /reject Atlassian account API tokens outright/);
+  });
+
+  it("reads a plan limit dressed as a 403", () => {
+    // Attachments answer "Feature not available in your plan" with a 403.
+    // Reaching the scope advice from there tells the user to widen a token
+    // that is already sufficient.
+    const message = handleApiError(
+      httpErrorWithErrors(403, [{ title: "Feature not available in your plan" }]),
+      "list attachments",
+    );
+    assert.match(message, /not included in the site's JSM plan/);
+    assert.doesNotMatch(message, /permission denied/);
+    assert.doesNotMatch(message, /jira-service-management/);
   });
 
   it("treats alert policies as configuration, not as alerts", () => {
@@ -337,6 +372,39 @@ describe("handleApiError", () => {
       "ctx",
     );
     assert.match(message, /field x is required; Also/);
+  });
+
+  it("appends the field map, because the message alone says nothing", () => {
+    // A third envelope: `errors` as a field-to-reason map sitting next to a
+    // message that is only "check the errors". POST to a notification rule's
+    // steps rejects sendAfter this way, and stopping at `message` reported a
+    // rejected field without naming the field or the reason.
+    const message = handleApiError(
+      httpErrorWithFieldMap(422, "Request body is not processable. Please check the errors.", {
+        sendAfter: "can be defined only for 'create-alert' and 'assigned-alert'",
+      }),
+      "create notification step",
+    );
+    assert.match(message, /Please check the errors/);
+    assert.match(message, /sendAfter: can be defined only for 'create-alert'/);
+  });
+
+  it("trims the whitespace the API puts in its own field names", () => {
+    // A live 422 named the field "contact " — with the trailing space.
+    const message = handleApiError(
+      httpErrorWithFieldMap(422, undefined, { "contact ": "does not exist" }),
+      "create notification step",
+    );
+    assert.match(message, /API said: contact: does not exist/);
+  });
+
+  it("does not mistake the field map for the errors array", () => {
+    // `.map` is a function on the array and undefined on the map, so treating
+    // them alike throws inside the error handler and turns a 422 into a
+    // TypeError with none of the response in it.
+    assert.doesNotThrow(() =>
+      handleApiError(httpErrorWithFieldMap(422, undefined, { name: "required" }), "ctx"),
+    );
   });
 
   it("reports a 402 as a plan limit, not something to retry", () => {

@@ -155,9 +155,18 @@ export async function resolveTeams(client: JsmClient): Promise<Map<string, strin
   if (cached) return cached;
 
   try {
-    const response = await client.getOne<{ platformTeams?: PlatformTeam[] }>("/v1/teams");
+    // Two shapes are in play. The spec declares ListPlatformTeamResponse —
+    // `{platformTeams: [...]}` — but a live site answered this path with a
+    // bare JSON array on 2026-09-05, checked against two separate credentials.
+    // getCollection already accepts both; this call does not go through it,
+    // and reading only the documented key turned every team name on the
+    // on-call output back into a raw uuid without failing.
+    const response = await client.getOne<{ platformTeams?: PlatformTeam[] } | PlatformTeam[]>(
+      "/v1/teams",
+    );
+    const list = Array.isArray(response) ? response : (response.platformTeams ?? []);
     const teams = new Map<string, string>();
-    for (const team of response.platformTeams ?? []) {
+    for (const team of list) {
       if (team.teamId && team.teamName) teams.set(team.teamId, team.teamName);
     }
     teamCache.set(teams);

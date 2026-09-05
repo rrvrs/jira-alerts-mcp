@@ -196,15 +196,21 @@ function scopeAdvice(hints: ErrorHints | undefined): string {
 
   const { path, method } = hints;
 
-  // The four attachment endpoints are the one genuine dead end: they refuse
-  // API-token auth at the gateway, and the OpenAPI spec maps them to no OAuth
-  // scope at all, so there is no grant to go and ask for.
+  // Attachments are the awkward case, and were misdiagnosed once already. A
+  // token missing the delete scopes is refused at the gateway with a bare
+  // "scope does not match", which reads like an auth dead end — and the
+  // OpenAPI document declares no OAuth scope for these four endpoints, which
+  // seemed to confirm it. A second token on the SAME account got through the
+  // gateway and drew "Feature not available in your plan" instead, so the
+  // wall is the site's plan, not the auth method. Both were checked against a
+  // live tenant on 2026-09-05.
   if (path.includes("/attachments")) {
     return (
-      "The alert attachment endpoints reject Atlassian account API tokens outright (verified " +
-      "against a live tenant), and the API's own OpenAPI document declares no OAuth scope for " +
-      "them, so there is no scope to request. Treat attachments as unavailable on " +
-      "JSM_EMAIL + JSM_API_TOKEN auth; report that to the user rather than retrying."
+      "The alert attachment endpoints are gated twice over. The API's own OpenAPI document " +
+      "declares no OAuth scope for them, and on a site whose plan excludes attachments they " +
+      "answer 'Feature not available in your plan' even for a fully scoped token. Check the " +
+      "site's plan before treating this as a credentials problem; a wider token will not open " +
+      "a feature the plan does not include."
     );
   }
 
@@ -216,11 +222,20 @@ function scopeAdvice(hints: ErrorHints | undefined): string {
       : `read:${family}:jira-service-management and ${verb}:${family}:jira-service-management`;
 
   if (verb === "delete") {
+    // The delete scopes are granted per token, not per authentication method.
+    // Two Atlassian account API tokens for the same account were checked
+    // against a live tenant on 2026-09-05: the first was refused on every
+    // DELETE with this exact "scope does not match", and the second carried
+    // the delete scopes and completed the whole set. So "API tokens cannot
+    // delete" is the wrong conclusion to draw from this error, and telling
+    // the user to switch to OAuth sends them to rebuild an integration when
+    // reissuing the token would have done.
     return (
-      `This endpoint needs ${needed}. Atlassian account API tokens carry the read and write ops ` +
-      "scopes but NOT the delete ones (verified against a live tenant), so every DELETE-based " +
-      "tool here fails this way on JSM_EMAIL + JSM_API_TOKEN. Use a 3LO or Forge OAuth token " +
-      "granted the delete scope, via JSM_OAUTH_TOKEN. Do not retry with the same credentials."
+      `This endpoint needs ${needed}, and the credentials in use do not carry the delete half. ` +
+      "That grant is a property of the individual token rather than of API-token auth: another " +
+      "token on the same account can hold it. Reissue JSM_API_TOKEN with the delete scopes " +
+      "included, or supply a 3LO or Forge OAuth token via JSM_OAUTH_TOKEN. Retrying with these " +
+      "same credentials will fail identically."
     );
   }
 
@@ -231,6 +246,72 @@ function scopeAdvice(hints: ErrorHints | undefined): string {
         "jsm_list_alerts works and only this call fails, the credentials are fine and the config " +
         "scope is what is missing."
       : "Atlassian requires the read scope alongside the write one, not the write scope alone.")
+  );
+}
+
+/**
+ * Turns an error body into the one sentence worth showing the caller.
+ *
+ * Three envelopes are in use, and each of the last two was found by a request
+ * that came back saying nothing useful:
+ *
+ *   1. `{message}` on the Opsgenie-derived endpoints.
+ *   2. `{errors: [{title, detail}]}` on the newer ones, usually with no
+ *      `message` at all — GET /v1/roles answers this way, and reading only
+ *      `message` threw away its whole explanation ("You're not authorized to
+ *      do operations for Custom User Roles") and left a generic 403.
+ *   3. `{message, errors: {field: reason}}` — a field-to-reason map, *next to*
+ *      a message that is only "Request body is not processable. Please check
+ *      the errors." Reading `message` first and stopping there is how POST
+ *      /v1/notification-rules/{id}/steps reported a rejected field without
+ *      ever naming the field or the reason. The map is the entire content of
+ *      that answer, so it is appended rather than used as a fallback.
+ *
+ * Case 3 also has to be *detected*, not assumed: `errors.map` is a function on
+ * an array and undefined on the map, so treating them alike throws inside the
+ * error handler and replaces a 422 with a TypeError.
+ */
+function describeApiError(data: {
+  message?: string;
+  errors?: Array<{ title?: string; detail?: string }> | Record<string, string>;
+}): string | undefined {
+  const errors = data?.errors;
+
+  if (Array.isArray(errors)) {
+    const joined = errors
+      .map((e) => e.detail ?? e.title)
+      .filter(Boolean)
+      .join("; ");
+    return data?.message ?? (joined || undefined);
+  }
+
+  // The field map. Keys arrive with stray whitespace from the API itself —
+  // one live response named the field "contact " — so they are trimmed.
+  const fields =
+    errors && typeof errors === "object"
+      ? Object.entries(errors)
+          .map(([field, reason]) => `${field.trim()}: ${reason}`)
+          .join("; ")
+      : "";
+
+  if (data?.message && fields) return `${data.message} (${fields})`;
+  return data?.message ?? (fields || undefined);
+}
+
+/**
+ * Phrases the API uses when the site's plan, not the request, is the problem.
+ * Matched against the response text because the status code does not settle
+ * it: heartbeats answer 402, attachments answer 403, and both mean the same
+ * thing to the caller.
+ */
+const PLAN_LIMIT = /not available in your plan|upgrade your (pricing )?plan/i;
+
+function planLimitMessage(context: string, detail: string): string {
+  return (
+    `Error (${context}): this feature is not included in the site's JSM plan.${detail} ` +
+    `This is a billing limit rather than a fault: the request was well-formed and the ` +
+    `credentials are fine. Report it to the user — retrying, changing scopes or altering ` +
+    `the request will not help.`
   );
 }
 
@@ -252,22 +333,12 @@ export function handleApiError(error: unknown, context: string, hints?: ErrorHin
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<{
       message?: string;
-      errors?: Array<{ title?: string; detail?: string }>;
+      errors?: Array<{ title?: string; detail?: string }> | Record<string, string>;
     }>;
 
     if (axiosError.response) {
       const { status, data } = axiosError.response;
-      // Two error envelopes are in use. The Opsgenie-derived endpoints answer
-      // with `message`; the newer ones answer with `errors: [{title, detail}]`
-      // and no message at all — GET /v1/roles is one, and reading only
-      // `message` threw away its whole explanation ("You're not authorized to
-      // do operations for Custom User Roles"), leaving a generic 403.
-      const reported =
-        data?.message ??
-        data?.errors
-          ?.map((e) => e.detail ?? e.title)
-          .filter(Boolean)
-          .join("; ");
+      const reported = describeApiError(data);
       const detail = reported ? ` API said: ${reported}` : "";
 
       switch (status) {
@@ -297,6 +368,11 @@ export function handleApiError(error: unknown, context: string, hints?: ErrorHin
           );
         }
         case 403:
+          // A plan limit can arrive as 403 rather than 402 — the attachment
+          // endpoints answer "Feature not available in your plan" that way.
+          // Falling through to the scope advice would send the caller off to
+          // widen a token that is already sufficient.
+          if (PLAN_LIMIT.test(reported ?? "")) return planLimitMessage(context, detail);
           return (
             `Error (${context}): permission denied.${detail} ` +
             `The account needs Jira Service Management Operations access on the relevant team, plus ` +
@@ -324,12 +400,7 @@ export function handleApiError(error: unknown, context: string, hints?: ErrorHin
         // heartbeats answer 402 on every endpoint when the site's plan does not
         // include them.
         case 402:
-          return (
-            `Error (${context}): this feature is not included in the site's JSM plan.${detail} ` +
-            `This is a billing limit rather than a fault: the request was well-formed and the ` +
-            `credentials are fine. Report it to the user — retrying, changing scopes or altering ` +
-            `the request will not help.`
-          );
+          return planLimitMessage(context, detail);
         case 429:
           return (
             `Error (${context}): rate limited by Atlassian.${detail} ` +

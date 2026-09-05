@@ -169,7 +169,11 @@ const stepWriteShape = {
     .int()
     .min(0)
     .optional()
-    .describe("Minutes to wait after the event before this step notifies. 0 is immediate."),
+    .describe(
+      "Minutes to wait after the event before this step notifies. 0 is immediate. Accepted ONLY " +
+        "on rules whose action_type is 'create-alert' or 'assigned-alert' — every other rule " +
+        "rejects the whole request. Omit it elsewhere.",
+    ),
   enabled: z.boolean().describe("Required. A disabled step sends nothing."),
 };
 
@@ -233,13 +237,15 @@ Args:
   - notification_rule_id (string): the rule to add to
   - contact_method ('email' | 'sms' | 'voice' | 'mobile'), contact_to (string): required
   - enabled (boolean): required
-  - send_after (number, optional): minutes to wait; 0 notifies immediately
+  - send_after (number, optional): minutes to wait; 0 notifies immediately. Only valid on 'create-alert' and 'assigned-alert' rules
 
 Returns: { "notification_step": { "id": string, ... } }
 
 Synchronous.
 
-The contact method has to already exist on the account — check jsm_list_contacts first. A step naming an address that is not a registered contact method is accepted and then delivers nothing.
+The contact method has to already exist on the account — check jsm_list_contacts first. An address that is not a registered contact method is rejected outright, so add the contact before the step.
+
+send_after is rejected on every rule except 'create-alert' and 'assigned-alert'. Read the rule's action_type with jsm_get_notification_rule first; on any other rule, omit send_after entirely rather than passing 0.
 
 Steps are how a rule escalates through someone's own devices: email at 0, SMS at 5, voice at 10.`,
       input: stepWriteShape,
