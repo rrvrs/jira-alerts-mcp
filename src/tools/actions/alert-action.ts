@@ -1,9 +1,11 @@
 /**
  * The alert family's shortcut into executeWrite.
  *
- * Every alert action is a POST to `/v1/alerts/{id}/{action}` that returns an
+ * Nearly every alert action is a POST to `/v1/alerts/{id}/{action}` returning an
  * async receipt, so this exists to keep that prefix and that mode in one place
- * as the family grows past four tools. Everything load-bearing lives in
+ * as the family grows. The three field updates are PATCH against the same
+ * shape, which is why the method is a parameter with the common case as its
+ * default rather than a second helper. Everything load-bearing lives in
  * ../execute-write.ts — this is the alert-shaped call of it, not a second
  * executor.
  */
@@ -18,10 +20,11 @@ export function alertAction(
   alertId: string,
   action: string,
   body: Record<string, unknown>,
+  method: "POST" | "PATCH" = "POST",
 ): Promise<ToolResult> {
   return executeWrite(client, {
     label,
-    method: "POST",
+    method,
     path: `/v1/alerts/${encodeURIComponent(alertId)}/${action}`,
     body,
     mode: "async",

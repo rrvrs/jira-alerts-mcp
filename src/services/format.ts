@@ -301,6 +301,19 @@ export function renderNotes(notes: AlertNote[]): string {
     .join("\n");
 }
 
+/** Single-note view, used after an edit so the caller sees what the note now says. */
+export function renderNote(note: AlertNote): string {
+  return [
+    `Note \`${note.id ?? note.offset ?? "unknown"}\` on the alert now reads:`,
+    "",
+    note.note,
+    "",
+    `- **Author**: ${note.owner ?? "unknown"}`,
+    `- **Created**: ${timestamp(note.createdAt)}`,
+    ...(note.updatedAt ? [`- **Updated**: ${timestamp(note.updatedAt)}`] : []),
+  ].join("\n");
+}
+
 export function renderLogs(logs: AlertLog[]): string {
   if (!logs.length) return "No activity logs on this alert.";
   // logTime is the field the API actually sends; reading only createdAt

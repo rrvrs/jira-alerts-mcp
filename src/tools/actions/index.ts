@@ -17,6 +17,8 @@ import { escalateAlert } from "./escalate.js";
 import { assignAlert } from "./assign.js";
 import { snoozeAlert } from "./snooze.js";
 import { unacknowledgeAlert } from "./unacknowledge.js";
+import { updateAlertField } from "./update-field.js";
+import { deleteAlertNote, updateAlertNote } from "./update-note.js";
 
 export const alertActionTools: AnyToolDefinition[] = [
   createAlert,
@@ -26,7 +28,10 @@ export const alertActionTools: AnyToolDefinition[] = [
   assignAlert,
   escalateAlert,
   closeAlert,
+  updateAlertField,
   addAlertNote,
+  updateAlertNote,
+  deleteAlertNote,
   addAlertResponder,
 ];
 

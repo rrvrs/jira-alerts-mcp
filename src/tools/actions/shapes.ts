@@ -188,3 +188,52 @@ export const escalateShape = {
     ),
   note: z.string().max(25_000).optional().describe("Optional note recorded with the escalation."),
 };
+
+export const updateFieldShape = {
+  // Deliberately not actionBaseShape: the three PATCH endpoints behind this
+  // tool enumerate one property each and take no actor override.
+  alert_id: alertIdField,
+  field: z
+    .enum(["priority", "message", "description"])
+    .describe("Which field to overwrite. Each is a separate endpoint under the hood."),
+  value: z
+    .string()
+    .describe(
+      "The new value. For field='priority' this must be exactly one of P1, P2, P3, P4, P5. " +
+        "For 'message' keep it to one line — it is the headline responders read first. " +
+        "For 'description' anything goes, and an empty string clears it.",
+    ),
+};
+
+export const updateNoteShape = {
+  alert_id: alertIdField,
+  note_id: z
+    .string()
+    .min(1)
+    .describe("Id of the note to edit, from jsm_list_alert_notes. Not the note's text."),
+  note: noteField,
+};
+
+export const deleteNoteShape = {
+  alert_id: alertIdField,
+  note_id: z
+    .string()
+    .min(1)
+    .describe("Id of the note to delete, from jsm_list_alert_notes. Not the note's text."),
+};
+
+/** A note edit is synchronous and answers with the note itself. */
+export const noteOutputSchema = {
+  alert_id: z.string(),
+  note_id: z.string().optional(),
+  id: z.string().optional(),
+  note: z.string().optional(),
+  owner: z.string().optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+};
+
+export const deletedOutputSchema = {
+  deleted: z.boolean(),
+  note_id: z.string().optional(),
+};
