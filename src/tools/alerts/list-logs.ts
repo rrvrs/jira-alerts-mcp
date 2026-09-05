@@ -12,6 +12,7 @@ import { alertTimelineShape, paginationOutputShape } from "./shapes.js";
 
 export const listAlertLogs = defineTool({
   name: "jsm_list_alert_logs",
+  toolset: "alerts",
   title: "List JSM alert activity logs",
   description: `List the system activity log for a JSM alert — every state transition, notification, escalation and automated action, newest first by default.
 

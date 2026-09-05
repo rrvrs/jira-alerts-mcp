@@ -8,6 +8,7 @@ import { asyncOutputSchema, addNoteShape } from "./shapes.js";
 
 export const addAlertNote = defineTool({
   name: "jsm_add_alert_note",
+  toolset: "alert-actions",
   title: "Add a note to a JSM alert",
   description: `Append a note to a JSM alert's activity timeline without changing its state.
 

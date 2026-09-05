@@ -8,6 +8,7 @@ import { asyncOutputSchema, closeShape } from "./shapes.js";
 
 export const closeAlert = defineTool({
   name: "jsm_close_alert",
+  toolset: "alert-actions",
   title: "Close a JSM alert",
   description: `Close a JSM alert, marking it resolved and ending all notifications for it.
 

@@ -15,6 +15,7 @@ import { currentOnCallShape } from "./shapes.js";
 
 export const getOnCall = defineTool({
   name: "jsm_get_on_call",
+  toolset: "oncall",
   title: "Get who is on-call now",
   description: `Return the responders currently on-call for a JSM schedule, optionally evaluated at a past or future timestamp.
 

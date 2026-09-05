@@ -12,6 +12,7 @@ import { requestStatusShape } from "./shapes.js";
 
 export const getRequestStatus = defineTool({
   name: "jsm_get_request_status",
+  toolset: "alerts",
   title: "Check JSM async request status",
   description: `Check whether an asynchronous alert action actually succeeded.
 

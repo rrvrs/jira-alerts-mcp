@@ -77,11 +77,14 @@ Related: `ToolResult` in `src/services/format.ts` is a **type alias, not an inte
 1. Add any request/response types to [`src/types.ts`](src/types.ts). Type fields optional unless the API always returns them — the list endpoint returns a thinner object than the get endpoint.
 2. Reuse the shared Zod fragments from [`src/schemas/common.ts`](src/schemas/common.ts) (`limitField`, `offsetField`, `alertIdField`, `responseFormatField`, …) rather than redefining bounds.
 3. Create one file per tool under the domain it belongs to — `tools/alerts/` (read), `tools/actions/` (write), `tools/oncall/` (schedules) — exporting a single `defineTool({ ... })`. `defineTool` infers your handler's `params` from `inputSchema`, so don't hand-annotate them.
-4. Add it to that domain's `index.ts` array. `server.ts` picks it up from there.
-5. Add rendering to [`src/services/format.ts`](src/services/format.ts). Don't build markdown inline in the tool.
-6. Set `annotations` honestly — `readOnlyHint`, `destructiveHint`, `idempotentHint`. Clients use these to decide what to auto-approve.
-7. Add tests, and drive them through `connectTools` from [`src/tools/test-support.ts`](src/tools/test-support.ts) rather than calling the handler directly. Calling handlers directly skips the SDK's output-schema validation — that is exactly how the empty-result bug above shipped with a green suite asserting it was fine.
-8. Update the tool table in the README.
+4. Set `toolset` to the family it belongs to, from `TOOLSETS` in [`src/toolsets.ts`](src/toolsets.ts). It is required rather than optional: a tool with no toolset could not be selected at all, and a default one would land it in a set its author never considered — probably the one people load without asking. A new family means a new entry in `TOOLSETS` and `TOOLSET_INFO`, which is also what makes it visible to `jsm_list_capabilities`.
+5. Add it to that domain's `index.ts` array. `server.ts` picks it up from there.
+6. Add rendering to [`src/services/format.ts`](src/services/format.ts). Don't build markdown inline in the tool.
+7. Set `annotations` honestly — `readOnlyHint`, `destructiveHint`, `idempotentHint`. Clients use these to decide what to auto-approve, and `readOnlyHint` is also the filter `JSM_READ_ONLY` applies, so a dishonest one now hands a write tool to someone who asked for a read-only server.
+8. Add tests, and drive them through `connectTools` from [`src/tools/test-support.ts`](src/tools/test-support.ts) rather than calling the handler directly. Calling handlers directly skips the SDK's output-schema validation — that is exactly how the empty-result bug above shipped with a green suite asserting it was fine.
+9. Update the tool table in the README.
+
+Adding a tool to an existing toolset does **not** change what existing installs see: the default selection is `core`, a frozen list of names in `src/toolsets.ts` guarded by a snapshot test. Widening the default is a separate, deliberate change — edit the array and the snapshot together, and say so in the release notes.
 
 ### On tool descriptions
 

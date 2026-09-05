@@ -12,6 +12,7 @@ import { alertTimelineShape, paginationOutputShape } from "./shapes.js";
 
 export const listAlertNotes = defineTool({
   name: "jsm_list_alert_notes",
+  toolset: "alerts",
   title: "List JSM alert notes",
   description: `List the notes (human comments) recorded on a JSM alert's activity timeline, newest first by default.
 

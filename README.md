@@ -191,6 +191,8 @@ without republishing:
 | `JSM_CLOUD_ID` | yes | Your Atlassian site's cloud id (a UUID) |
 | `JSM_EMAIL` + `JSM_API_TOKEN` | one of | [Create a token](https://id.atlassian.com/manage-profile/security/api-tokens) |
 | `JSM_OAUTH_TOKEN` | one of | OAuth 3LO bearer; takes precedence if set |
+| `JSM_TOOLSETS` | no | Which tool families to register — see [Choosing your toolsets](#choosing-your-toolsets). Unset registers `core` |
+| `JSM_READ_ONLY` | no | `true` withholds every write tool |
 | `TRANSPORT` | no | `stdio` (default) or `http` |
 | `PORT` / `HOST` | no | HTTP transport; defaults to `127.0.0.1:3000` |
 | `ALLOWED_HOSTS` | no | Comma-separated `Host` allowlist. Required if you set `HOST` beyond loopback — see [SECURITY.md](SECURITY.md) |
@@ -202,6 +204,46 @@ actionable message rather than on the first tool call.
 read `.env` itself — an MCP server is launched by its client, and the client owns
 the environment. Use the file as a checklist for your client's `env` block, or
 `set -a; source .env; set +a` for local development.
+
+### Choosing your toolsets
+
+The JSM Operations API is roughly 240 operations. Registering all of them would
+hand your client a tool list it cannot choose from accurately, so the surface is
+cut into named **toolsets** and you pick:
+
+| Name | What it registers | Scope |
+|---|---|---|
+| `alerts` | Alert reads: search, detail, notes, activity logs, request status | `read:ops-alert:…` |
+| `alert-actions` | Acknowledge, close, annotate, add responders | `read:` + `write:ops-alert:…` |
+| `oncall` | Schedules, who is on call now and next, shift timelines | `read:ops-config:…` |
+
+Plus three **profiles**, which are bundles of the above:
+
+| Profile | Contents |
+|---|---|
+| `core` | **The default.** The thirteen tools that shipped before toolsets existed |
+| `responder` | `alerts` + `alert-actions` + `oncall` |
+| `all` | Every toolset |
+
+```jsonc
+"env": { "JSM_TOOLSETS": "responder" }     // or "alerts,oncall", or "all"
+```
+
+Names combine freely, and the flags `--toolsets=a,b` and `--read-only` override
+the environment. A name that isn't in the tables above stops the server at
+startup with the valid names and a suggestion — a typo should not quietly leave
+you with fewer tools than you asked for.
+
+`core` and `responder` hold the same tools today, and are deliberately not the
+same mechanism. `core` is a frozen list of thirteen names, so upgrading never
+changes what your client sees or what it auto-approves; `responder` is derived
+from its toolsets and widens as families land.
+
+**`jsm_list_capabilities` is always registered**, whatever you select. It reports
+every toolset, whether it is loaded, its scopes, and the variable to change — so
+when you ask for something the current selection doesn't cover, you get "that's
+in the `oncall` toolset" rather than "this server can't do that". Changing
+`JSM_TOOLSETS` needs a restart; nothing can enable a toolset mid-conversation.
 
 **Required scopes.** Alerts and on-call sit behind **different** scopes, which is
 the single most common setup mistake:

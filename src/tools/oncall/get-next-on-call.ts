@@ -15,6 +15,7 @@ import { nextOnCallShape } from "./shapes.js";
 
 export const getNextOnCall = defineTool({
   name: "jsm_get_next_on_call",
+  toolset: "oncall",
   title: "Get who is on-call next",
   description: `Return the responders who take over the next shift on a JSM schedule, and when that shift begins.
 

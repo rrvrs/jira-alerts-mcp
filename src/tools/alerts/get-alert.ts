@@ -11,6 +11,7 @@ import { alertOutputShape, getAlertShape } from "./shapes.js";
 
 export const getAlert = defineTool({
   name: "jsm_get_alert",
+  toolset: "alerts",
   title: "Get JSM alert details",
   description: `Retrieve the full detail of a single JSM alert, including its description, custom details/extraProperties, responders, tags and dedupe count.
 

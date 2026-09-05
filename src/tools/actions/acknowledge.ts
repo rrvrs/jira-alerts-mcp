@@ -8,6 +8,7 @@ import { asyncOutputSchema, acknowledgeShape } from "./shapes.js";
 
 export const acknowledgeAlert = defineTool({
   name: "jsm_acknowledge_alert",
+  toolset: "alert-actions",
   title: "Acknowledge a JSM alert",
   description: `Acknowledge an open JSM alert, stopping further escalation notifications for it.
 

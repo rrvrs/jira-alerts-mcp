@@ -13,6 +13,7 @@ import { alertOutputShape, listAlertsShape, paginationOutputShape } from "./shap
 
 export const listAlerts = defineTool({
   name: "jsm_list_alerts",
+  toolset: "alerts",
   title: "Search JSM alerts",
   description: `Search and list alerts in Jira Service Management Operations.
 

@@ -8,6 +8,7 @@ import { asyncOutputSchema, addResponderShape } from "./shapes.js";
 
 export const addAlertResponder = defineTool({
   name: "jsm_add_alert_responder",
+  toolset: "alert-actions",
   title: "Add a responder to a JSM alert",
   description: `Add a responder (user, team, escalation or schedule) to an existing JSM alert so they are notified and become accountable for it.
 
