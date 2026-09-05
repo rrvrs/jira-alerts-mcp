@@ -287,3 +287,33 @@ export interface ScheduleOverride {
   endDate?: string;
   rotationIds?: string[];
 }
+
+/** A team as GET /v1/teams reports it — note the teamId/teamName naming. */
+export interface PlatformTeam {
+  teamId?: string;
+  teamName?: string;
+}
+
+/** A role within one team, granting rights on that team's operations. */
+export interface TeamRole {
+  id?: string;
+  name?: string;
+  rights?: Array<Record<string, unknown>>;
+}
+
+/** A contact method: where one person gets notified. */
+export interface Contact {
+  id?: string;
+  /** "email" | "sms" | "voice" | "mobile". */
+  method?: string;
+  to?: string;
+  status?: { enabled?: boolean; disabledReason?: string };
+}
+
+/** A custom user role, granting rights across the site rather than per team. */
+export interface CustomUserRole {
+  id?: string;
+  name?: string;
+  grantedRights?: string[];
+  disallowedRights?: string[];
+}

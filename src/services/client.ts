@@ -250,11 +250,25 @@ export function handleApiError(error: unknown, context: string, hints?: ErrorHin
   }
 
   if (axios.isAxiosError(error)) {
-    const axiosError = error as AxiosError<{ message?: string; errors?: unknown }>;
+    const axiosError = error as AxiosError<{
+      message?: string;
+      errors?: Array<{ title?: string; detail?: string }>;
+    }>;
 
     if (axiosError.response) {
       const { status, data } = axiosError.response;
-      const detail = data?.message ? ` API said: ${data.message}` : "";
+      // Two error envelopes are in use. The Opsgenie-derived endpoints answer
+      // with `message`; the newer ones answer with `errors: [{title, detail}]`
+      // and no message at all — GET /v1/roles is one, and reading only
+      // `message` threw away its whole explanation ("You're not authorized to
+      // do operations for Custom User Roles"), leaving a generic 403.
+      const reported =
+        data?.message ??
+        data?.errors
+          ?.map((e) => e.detail ?? e.title)
+          .filter(Boolean)
+          .join("; ");
+      const detail = reported ? ` API said: ${reported}` : "";
 
       switch (status) {
         case 400:

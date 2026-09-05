@@ -200,6 +200,24 @@ function httpError(status: number, message?: string): AxiosError {
   );
 }
 
+/** The newer endpoints answer with `errors: [{title, detail}]` and no message. */
+function httpErrorWithErrors(status: number, errors: Array<{ title?: string; detail?: string }>) {
+  const config = { headers: new AxiosHeaders() };
+  return new AxiosError(
+    "Request failed",
+    "ERR_BAD_REQUEST",
+    config,
+    {},
+    {
+      status,
+      statusText: "",
+      headers: {},
+      config,
+      data: { errors },
+    },
+  );
+}
+
 describe("handleApiError", () => {
   it("names the context in every message", () => {
     assert.match(handleApiError(httpError(400), "list alerts"), /list alerts/);
@@ -295,6 +313,30 @@ describe("handleApiError", () => {
     });
     assert.doesNotMatch(message, /tinyId/);
     assert.match(message, /ids are not interchangeable/);
+  });
+
+  it("reads the errors[] envelope, not just message", () => {
+    // Two envelopes are in use. GET /v1/roles answers with errors[].title and
+    // no message at all, so reading only `message` threw away the single most
+    // useful sentence in the response and left a generic 403.
+    const message = handleApiError(
+      httpErrorWithErrors(403, [
+        { title: "You're not authorized to do operations for Custom User Roles." },
+      ]),
+      "list user roles",
+    );
+    assert.match(message, /not authorized to do operations for Custom User Roles/);
+  });
+
+  it("prefers detail over title, and joins several errors", () => {
+    const message = handleApiError(
+      httpErrorWithErrors(400, [
+        { title: "Bad", detail: "field x is required" },
+        { title: "Also" },
+      ]),
+      "ctx",
+    );
+    assert.match(message, /field x is required; Also/);
   });
 
   it("tells the caller to back off on a 429", () => {

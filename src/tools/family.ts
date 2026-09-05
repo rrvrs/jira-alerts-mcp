@@ -39,7 +39,7 @@ import {
 import { type AnyToolDefinition, defineTool, type EndpointDeclaration } from "./define.js";
 import { executeList } from "./list-executor.js";
 import { executeWrite } from "./execute-write.js";
-import type { PagingDialect } from "./paging.js";
+import { DEFAULT_DIALECT, pagingQueryNames, type PagingDialect } from "./paging.js";
 import type { ToolGroup } from "../toolsets.js";
 
 /** A path parameter belonging to a resource above this one. */
@@ -125,6 +125,16 @@ export interface ListOp<T, Ctx = undefined> extends CommonOp {
   query?: z.ZodRawShape;
   /** Maps validated params to the query the API reads. */
   toParams?: (params: Record<string, unknown>) => Record<string, unknown>;
+  /**
+   * The query names this tool puts on the wire, when they differ from the
+   * input shape's keys — inputs are snake_case and the API is camelCase, so
+   * `toParams` almost always implies this. Defaults to the input keys.
+   *
+   * This exists because the manifest has to describe the request, not the tool:
+   * declaring `target_account_id` against an endpoint that reads
+   * `targetAccountId` documents a parameter that is never sent.
+   */
+  queryFields?: string[];
   /** Fetched once per call and handed to `render` — e.g. a team-name lookup. */
   prepare?: (client: JsmClient) => Promise<Ctx>;
   /** Item shape for the structured payload. Defaults to a passthrough object. */
@@ -158,6 +168,11 @@ export interface RemoveOp extends CommonOp {}
 
 const passthroughItem = z.object({}).passthrough();
 
+/** Turns a payload key into something that reads as prose in a message. */
+function prose(name: string): string {
+  return name.replace(/_/g, " ");
+}
+
 /** Substitutes the parent ids into the collection path. */
 function collectionPath(config: ResourceConfig, params: Record<string, unknown>): string {
   let path = config.path;
@@ -190,7 +205,10 @@ export function defineListOperation<T, Ctx = undefined>(
   const endpoint: EndpointDeclaration = {
     method: "GET",
     path: config.path,
-    query: ["size", "offset", ...Object.keys(op.query ?? {})],
+    query: [
+      ...pagingQueryNames(paging ?? DEFAULT_DIALECT),
+      ...(op.queryFields ?? Object.keys(op.query ?? {})),
+    ],
   };
 
   return defineTool({
@@ -222,12 +240,18 @@ export function defineListOperation<T, Ctx = undefined>(
       // calls, one per row, without anything in the type saying so.
       const context = (op.prepare ? await op.prepare(client) : undefined) as Ctx;
 
+      // Only the offset dialect reads `offset`; sending it to an endpoint that
+      // declares no paging parameters is a false statement about the endpoint,
+      // and it is the manifest — not the wire — where that does damage.
+      const dialect = paging ?? DEFAULT_DIALECT;
+      const position = dialect.kind === "offset" ? { offset: typed.offset } : {};
+
       return executeList<T>({
         client,
         path: collectionPath(config, typed),
-        params: { offset: typed.offset, ...(op.toParams ? op.toParams(typed) : {}) },
+        params: { ...position, ...(op.toParams ? op.toParams(typed) : {}) },
         key: config.plural,
-        context: `list ${config.plural}`,
+        context: `list ${prose(config.plural)}`,
         limit: typed.limit,
         offset: typed.offset,
         format: typed.response_format,
@@ -267,7 +291,7 @@ export function defineGetOperation<T, Ctx = undefined>(
         return ok(op.render(item, context), { [config.noun]: item as Record<string, unknown> });
       } catch (error) {
         return fail(
-          handleApiError(error, `get ${config.noun}`, {
+          handleApiError(error, `get ${prose(config.noun)}`, {
             method: "GET",
             path: itemManifestPath(config),
           }),
@@ -292,7 +316,7 @@ export function defineCreateOperation<T>(
     annotations: ANNOTATIONS.create,
     handler: async (params, client) =>
       executeWrite<T>(client, {
-        label: `Create ${config.noun}`,
+        label: `Create ${prose(config.noun)}`,
         method: "POST",
         path: collectionPath(config, params as Record<string, unknown>),
         body: op.toBody(params as Record<string, unknown>),
@@ -328,7 +352,7 @@ export function defineUpdateOperation<T>(
       const typed = params as Record<string, unknown>;
       const id = String(typed[config.idParam]);
       return executeWrite<T>(client, {
-        label: `Update ${config.noun}`,
+        label: `Update ${prose(config.noun)}`,
         method: config.updateMethod ?? "PATCH",
         path: itemPath(config, typed, id),
         body: op.toBody(typed),
@@ -355,7 +379,7 @@ export function defineRemoveOperation(config: ResourceConfig, op: RemoveOp): Any
       const typed = params as Record<string, unknown>;
       const id = String(typed[config.idParam]);
       return executeWrite(client, {
-        label: `Delete ${config.noun}`,
+        label: `Delete ${prose(config.noun)}`,
         method: "DELETE",
         path: itemPath(config, typed, id),
         mode: "deleted",

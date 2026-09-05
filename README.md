@@ -409,10 +409,40 @@ Schedule configuration — the `schedules` toolset, **not** registered by defaul
 | `jsm_update_override` | `PUT /v1/schedules/{id}/overrides/{alias}` | **destructive** |
 | `jsm_delete_override` | `DELETE /v1/schedules/{id}/overrides/{alias}` | **destructive** |
 
-Enable them with `JSM_TOOLSETS=responder,schedules`, or `JSM_TOOLSETS=admin` for
-on-call reads plus schedule configuration. They are separate from `responder` on
-purpose: editing a rotation is not something a responder working an incident
-should be one tool call away from, and the write scopes are a different grant.
+Teams and permissions — the `teams` toolset, **not** registered by default:
+
+| Tool | Endpoint | Read/Write |
+|---|---|---|
+| `jsm_list_teams` | `GET /v1/teams` | read |
+| `jsm_list_team_roles` | `GET /v1/teams/{id}/roles` | read |
+| `jsm_get_team_role` | `GET /v1/teams/{id}/roles/{identifier}` | read |
+| `jsm_create_team_role` | `POST /v1/teams/{id}/roles` | write |
+| `jsm_update_team_role` | `PATCH /v1/teams/{id}/roles/{identifier}` | **destructive** |
+| `jsm_delete_team_role` | `DELETE /v1/teams/{id}/roles/{identifier}` | **destructive** |
+| `jsm_list_user_roles` | `GET /v1/roles` | read |
+| `jsm_get_user_role` | `GET /v1/roles/{identifier}` | read |
+| `jsm_create_user_role` | `POST /v1/roles` | write |
+| `jsm_update_user_role` | `PUT /v1/roles/{identifier}` | **destructive** |
+| `jsm_delete_user_role` | `DELETE /v1/roles/{identifier}` | **destructive** |
+| `jsm_assign_user_role` | `POST /v1/roles/assign` | **destructive** |
+| `jsm_list_contacts` | `GET /v1/users/contacts` | read |
+| `jsm_get_contact` | `GET /v1/users/contacts/{id}` | read |
+| `jsm_create_contact` | `POST /v1/users/contacts` | write |
+| `jsm_update_contact` | `PATCH /v1/users/contacts/{id}` | **destructive** |
+| `jsm_delete_contact` | `DELETE /v1/users/contacts/{id}` | **destructive** |
+| `jsm_activate_contact` | `PATCH /v1/users/contacts/{id}/activate` | write |
+| `jsm_deactivate_contact` | `PATCH /v1/users/contacts/{id}/deactivate` | **destructive** |
+
+Enable them with `JSM_TOOLSETS=responder,schedules,teams`, or `JSM_TOOLSETS=admin` for
+on-call reads plus schedule and team configuration. They are separate from
+`responder` on purpose: editing a rotation or granting a role is not something a
+responder working an incident should be one tool call away from, and the write
+scopes are a different grant.
+
+`jsm_deactivate_contact` and `jsm_assign_user_role` are marked destructive
+without deleting anything. Deactivating a contact method stops a person being
+notified — silently, which is the failure mode worth prompting on — and
+assigning a role grants site-wide rights.
 
 The alert and on-call tables above are registered by default. Narrow the surface with `JSM_TOOLSETS`
 or `JSM_READ_ONLY` — see [Choosing your toolsets](#choosing-your-toolsets).
