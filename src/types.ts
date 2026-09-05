@@ -343,3 +343,58 @@ export interface Heartbeat {
   alertTags?: string[];
   alertPriority?: string;
 }
+
+/** An escalation policy: who gets woken next, and after how long. */
+export interface Escalation {
+  id?: string;
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+  rules?: Array<{
+    condition?: string;
+    notifyType?: string;
+    delay?: number;
+    recipient?: { id?: string; type?: string };
+  }>;
+  repeat?: Record<string, unknown>;
+}
+
+/** A routing rule: which alerts reach which schedule or escalation. */
+export interface RoutingRule {
+  id?: string;
+  name?: string;
+  order?: number;
+  timezone?: string;
+  criteria?: unknown;
+  notify?: { id?: string; type?: string };
+}
+
+/** A forwarding rule: one person's notifications sent to another for a period. */
+export interface ForwardingRule {
+  id?: string;
+  fromUser?: { id?: string; username?: string };
+  toUser?: { id?: string; username?: string };
+  fromUserId?: string;
+  toUserId?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+/** A notification rule: what one person is told about, and how. */
+export interface NotificationRule {
+  id?: string;
+  name?: string;
+  actionType?: string;
+  enabled?: boolean;
+  order?: number;
+  schedules?: string[];
+  steps?: NotificationRuleStep[];
+}
+
+/** One step of a notification rule: a contact and a delay. */
+export interface NotificationRuleStep {
+  id?: string;
+  enabled?: boolean;
+  sendAfter?: number;
+  contact?: { method?: string; to?: string };
+}

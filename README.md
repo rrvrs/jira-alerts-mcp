@@ -467,6 +467,47 @@ rather than as something to retry. `jsm_ping_heartbeat` is marked
 destructive because sending a ping by hand asserts, on the monitored job's
 behalf, that it is alive: it resets the timer and clears a firing alert.
 
+Who gets notified — the `routing` toolset, **not** registered by default:
+
+| Tool | Endpoint | Read/Write |
+|---|---|---|
+| `jsm_list_escalations` | `GET /v1/teams/{id}/escalations` | read |
+| `jsm_get_escalation` | `GET /v1/teams/{id}/escalations/{id}` | read |
+| `jsm_create_escalation` | `POST /v1/teams/{id}/escalations` | write |
+| `jsm_update_escalation` | `PATCH /v1/teams/{id}/escalations/{id}` | **destructive** |
+| `jsm_delete_escalation` | `DELETE /v1/teams/{id}/escalations/{id}` | **destructive** |
+| `jsm_list_routing_rules` | `GET /v1/teams/{id}/routing-rules` | read |
+| `jsm_get_routing_rule` | `GET /v1/teams/{id}/routing-rules/{id}` | read |
+| `jsm_create_routing_rule` | `POST /v1/teams/{id}/routing-rules` | write |
+| `jsm_update_routing_rule` | `PATCH /v1/teams/{id}/routing-rules/{id}` | **destructive** |
+| `jsm_delete_routing_rule` | `DELETE /v1/teams/{id}/routing-rules/{id}` | **destructive** |
+| `jsm_change_routing_rule_order` | `PATCH /v1/teams/{id}/routing-rules/{id}/change-order` | **destructive** |
+| `jsm_list_forwarding_rules` | `GET /v1/forwarding-rules` | read |
+| `jsm_get_forwarding_rule` | `GET /v1/forwarding-rules/{id}` | read |
+| `jsm_create_forwarding_rule` | `POST /v1/forwarding-rules` | write |
+| `jsm_update_forwarding_rule` | `PUT /v1/forwarding-rules/{id}` | **destructive** |
+| `jsm_delete_forwarding_rule` | `DELETE /v1/forwarding-rules/{id}` | **destructive** |
+| `jsm_list_notification_rules` | `GET /v1/notification-rules` | read |
+| `jsm_get_notification_rule` | `GET /v1/notification-rules/{id}` | read |
+| `jsm_create_notification_rule` | `POST /v1/notification-rules` | write |
+| `jsm_update_notification_rule` | `PATCH /v1/notification-rules/{id}` | **destructive** |
+| `jsm_delete_notification_rule` | `DELETE /v1/notification-rules/{id}` | **destructive** |
+| `jsm_list_notification_steps` | `GET /v1/notification-rules/{id}/steps` | read |
+| `jsm_get_notification_step` | `GET /v1/notification-rules/{id}/steps/{id}` | read |
+| `jsm_create_notification_step` | `POST /v1/notification-rules/{id}/steps` | write |
+| `jsm_update_notification_step` | `PATCH /v1/notification-rules/{id}/steps/{id}` | **destructive** |
+| `jsm_delete_notification_step` | `DELETE /v1/notification-rules/{id}/steps/{id}` | **destructive** |
+
+These are the tools that change who gets paged, which is why so many of them
+carry `destructiveHint`. `jsm_change_routing_rule_order` deletes nothing and is
+marked destructive because order *is* behaviour: routing rules are evaluated top
+down and the first match wins, so moving one can silently redirect alerts that
+were reaching the right people.
+
+Notification rules belong to the account the credentials authenticate as. There
+is no parameter for reading somebody else's, so a shared token cannot answer
+"why wasn't Priya notified?" from that endpoint.
+
 Enable them with `JSM_TOOLSETS=responder,schedules,teams`, or `JSM_TOOLSETS=admin` for
 on-call reads plus schedule and team configuration. They are separate from
 `responder` on purpose: editing a rotation or granting a role is not something a
