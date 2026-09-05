@@ -152,6 +152,31 @@ describe("policies toolset", () => {
     assert.deepEqual(bodyOf(calls[0]), { order: 3 });
   });
 
+  it("survives the 204 the reorder endpoint actually returns", async () => {
+    // enable and disable answer 200 with the policy; change-order answers 204
+    // with nothing. Sharing one output schema across all three meant every
+    // reorder failed output validation. Unreachable on the test tenant — the
+    // account is not a JSM admin and policies answer 403 — so the spec and
+    // this test are what stand behind the fix.
+    const { client } = stubClient({ items: [] }, { write: "" });
+    const mcp = await connectTools(policyTools, client);
+
+    const result = await callTool(mcp, "jsm_change_policy_order", { policy_id: "p1", order: 3 });
+
+    assert.ok(!result.isError, textOf(result));
+    assert.deepEqual(result.structuredContent, { confirmed: true, policy_id: "p1" });
+  });
+
+  it("still returns the policy from enable and disable, which answer 200", async () => {
+    const { client } = stubClient({ items: [] }, { write: { id: "p1", enabled: true } });
+    const mcp = await connectTools(policyTools, client);
+
+    const result = await callTool(mcp, "jsm_enable_policy", { policy_id: "p1" });
+
+    assert.ok(!result.isError, textOf(result));
+    assert.deepEqual(result.structuredContent?.policy, { id: "p1", enabled: true });
+  });
+
   it("updates a policy with PUT, because there is no partial update", async () => {
     const { client, calls } = stubClient({ items: [] }, { write: { id: "p1" } });
     const mcp = await connectTools(policyTools, client);

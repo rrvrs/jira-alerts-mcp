@@ -189,6 +189,24 @@ export function renderDeleted(
   });
 }
 
+/**
+ * Confirms a 204 that changed something without removing it.
+ *
+ * Deliberately not renderDeleted with a different word: the structured payload
+ * carries `confirmed`, not `deleted`, because a model reading `deleted: true`
+ * after a reorder will say the thing was deleted.
+ */
+export function renderConfirmed(
+  label: string,
+  subject?: { key: string; value?: string | undefined; noun: string },
+): ToolResult {
+  const target = subject?.value ? ` for ${subject.noun} \`${subject.value}\`` : "";
+  return ok(`${label} succeeded${target}. The API confirmed it with no response body.`, {
+    confirmed: true,
+    ...(subject?.value !== undefined ? { [subject.key]: subject.value } : {}),
+  });
+}
+
 function timestamp(value?: string): string {
   if (!value) return "unknown";
   const parsed = new Date(value);

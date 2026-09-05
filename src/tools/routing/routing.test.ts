@@ -118,6 +118,27 @@ describe("routing toolset", () => {
     assert.deepEqual(bodyOf(calls[0]), { order: 2 });
   });
 
+  it("survives the 204 the reorder endpoint actually returns", async () => {
+    // This shipped broken. The endpoint answers 204 with no body, which
+    // deserialises to an empty string, and the tool declared the updated rule
+    // as its output — so every call died on the SDK's own output validation
+    // with "expected object, received string". The old test stubbed an object
+    // the API never sends, which is exactly why it passed.
+    const { client } = stubClient({ items: [] }, { write: "" });
+    const mcp = await connectTools(routingTools, client);
+
+    const result = await callTool(mcp, "jsm_change_routing_rule_order", {
+      team_id: TEAM,
+      routing_rule_id: "r1",
+      order: 2,
+    });
+
+    assert.ok(!result.isError, textOf(result));
+    assert.deepEqual(result.structuredContent, { confirmed: true, routing_rule_id: "r1" });
+    // Not `deleted` — a model reading that would report the rule as removed.
+    assert.ok(!("deleted" in (result.structuredContent ?? {})));
+  });
+
   it("maps show_all onto the API's own parameter name", async () => {
     const { client, calls } = stubClient({ items: [] });
     const mcp = await connectTools(routingTools, client);

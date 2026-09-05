@@ -171,7 +171,9 @@ Args:
   - team_id (string), routing_rule_id (string): the rule to move
   - order (number): its new position
 
-Returns: { "routing_rule": { "id": string, "order": number, ... } }
+Returns: { "confirmed": true, "routing_rule_id": string }
+
+The API answers 204 with no body, so nothing about the rule comes back — re-read it with jsm_get_routing_rule if you need to show the new position.
 
 Order is behaviour, not presentation: rules are evaluated top down and the first match wins. Moving a broad rule upwards can shadow everything below it, so alerts that were reaching one rotation start reaching another with no other change.
 
@@ -181,7 +183,7 @@ Read jsm_list_routing_rules first and say what the new order will be before call
     routing_rule_id: routingRuleIdField,
     order: z.number().int().min(0).describe("The rule's new position in the list."),
   },
-  outputSchema: { routing_rule: z.object({}).passthrough() },
+  outputSchema: { confirmed: z.boolean(), routing_rule_id: z.string() },
   annotations: {
     readOnlyHint: false,
     // Reordering silently changes which alerts reach whom.
@@ -197,8 +199,10 @@ Read jsm_list_routing_rules first and say what the new order will be before call
         `/v1/teams/${encodeURIComponent(params.team_id)}/routing-rules/` +
         `${encodeURIComponent(params.routing_rule_id)}/change-order`,
       body: { order: params.order },
-      mode: "sync",
-      render: (item) => renderRoutingRule(item),
-      structured: (item) => ({ routing_rule: item as Record<string, unknown> }),
+      // 204, no body. Declaring the updated rule as the output made every call
+      // fail validation with "expected object, received string" — verified
+      // against a live tenant on 2026-09-05.
+      mode: "confirmed",
+      subject: { key: "routing_rule_id", value: params.routing_rule_id, noun: "routing rule" },
     }),
 });

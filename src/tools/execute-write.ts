@@ -21,6 +21,7 @@ import {
   fail,
   ok,
   renderAsyncReceipt,
+  renderConfirmed,
   renderDeleted,
   type ToolResult,
 } from "../services/format.js";
@@ -32,7 +33,19 @@ export type WriteMode =
   /** The response body is the updated object. */
   | "sync"
   /** 204 with no body. */
-  | "deleted";
+  | "deleted"
+  /**
+   * 204 with no body, on an endpoint that did not delete anything.
+   *
+   * Split from "deleted" because the structured payload is read by a model:
+   * reporting `deleted: true` after reordering a routing rule is how a caller
+   * ends up telling someone the rule was removed. The reorder endpoints are
+   * the ones this exists for — they answer 204, and declaring the updated
+   * object as their output made every call fail output validation with
+   * "expected object, received string", which is what an empty body
+   * deserialises to.
+   */
+  | "confirmed";
 
 export interface WriteOptions<T> {
   /** Human label for the action, used in the receipt and in error messages. */
@@ -85,6 +98,10 @@ export async function executeWrite<T>(
 
     if (mode === "deleted") {
       return renderDeleted(label, subject);
+    }
+
+    if (mode === "confirmed") {
+      return renderConfirmed(label, subject);
     }
 
     if (mode === "sync") {

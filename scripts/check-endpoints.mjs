@@ -113,10 +113,11 @@ function requestBodyFields(operation) {
 const declared = [];
 for (const tool of allTools) {
   if (!tool.endpoint) continue;
-  for (const endpoint of [tool.endpoint].flat()) declared.push({ tool: tool.name, endpoint });
+  for (const endpoint of [tool.endpoint].flat())
+    declared.push({ tool: tool.name, endpoint, outputSchema: tool.outputSchema });
 }
 
-for (const { tool, endpoint } of declared) {
+for (const { tool, endpoint, outputSchema } of declared) {
   const key = normalise(endpoint.path);
   const byMethod = operations.get(key);
 
@@ -181,6 +182,27 @@ for (const { tool, endpoint } of declared) {
     expect(
       !specBody.has(name),
       `${tool}: allowUnknownBody lists '${name}', but the spec declares it now. Drop the allowance.`,
+    );
+  }
+
+  // A 204 deserialises to an empty string, so a tool that declares the updated
+  // object as its output fails the SDK's own output validation on every call —
+  // "expected object, received string" — and the endpoint is never reachable.
+  // jsm_change_routing_rule_order shipped exactly this way and was only caught
+  // by calling it against a live tenant. Both reorder endpoints answer 204
+  // while their siblings answer 200, which is what made it easy to miss.
+  const successCodes = Object.keys(operation.responses ?? {}).filter((code) =>
+    code.startsWith("2"),
+  );
+  const noBody = successCodes.length > 0 && successCodes.every((code) => code === "204");
+  if (noBody && outputSchema) {
+    const keys = Object.keys(outputSchema);
+    const confirms = keys.includes("deleted") || keys.includes("confirmed");
+    expect(
+      confirms,
+      `${tool}: ${endpoint.method} ${endpoint.path} answers 204 with no body, but the tool ` +
+        `declares an output of {${keys.join(", ")}}. Use mode "deleted" or "confirmed" — ` +
+        `anything else fails output validation on every call.`,
     );
   }
 

@@ -164,11 +164,19 @@ Args:
   - team_id (string): the owning team
   - name (string): the heartbeat to ping
 
-Returns: { "heartbeat": { "name": string, "status": string, ... } }
+Returns: { "pinged": true, "name": string, "message": string }
+
+The response is only an acknowledgement — "PONG - Heartbeat received" — not the heartbeat's record. Nothing about the heartbeat's state comes back, so report that the ping was accepted rather than describing the heartbeat.
+
+The API answers PONG whether or not a heartbeat by that name exists, and answers it on sites whose plan excludes heartbeat monitoring entirely (both checked against a live tenant on 2026-09-05). So a successful ping is NOT evidence that the heartbeat is real or that monitoring is active. Confirm with jsm_list_heartbeats before telling anyone a heartbeat is being kept alive.
 
 This is what the monitored job itself is meant to call. Sending it by hand tells JSM the job is alive when it may not be — which silences a real alert. Only do it when the user has explicitly asked, and say plainly that the heartbeat has been reset rather than that the underlying job is healthy.`,
   inputSchema: { team_id: teamIdField, name: nameField },
-  outputSchema: heartbeatOutput,
+  outputSchema: {
+    pinged: z.boolean(),
+    name: z.string(),
+    message: z.string().optional(),
+  },
   annotations: {
     readOnlyHint: false,
     // A ping asserts liveness on the job's behalf and clears a firing alert.
@@ -177,14 +185,27 @@ This is what the monitored job itself is meant to call. Sending it by hand tells
     openWorldHint: true,
   },
   handler: async (params, client) =>
-    executeWrite<Heartbeat>(client, {
+    // The ping answers {message: "PONG - Heartbeat received"} and nothing
+    // else. Rendering that through renderHeartbeat printed a heartbeat with
+    // no name, no interval and no status — "**(unnamed)**" — which reads like
+    // a heartbeat that exists and is broken. Verified against a live tenant.
+    executeWrite<{ message?: string }>(client, {
       label: "Ping heartbeat",
       method: "GET",
       path: `${path(params.team_id)}/ping`,
       params: { name: params.name },
       mode: "sync",
-      render: (beat) => renderHeartbeat(beat),
-      structured: (beat) => ({ heartbeat: beat as Record<string, unknown> }),
+      render: (pong) =>
+        `Ping accepted for heartbeat \`${params.name}\`. The API answered: ${
+          pong?.message ?? "(no message)"
+        }\n\nThis acknowledges the ping only. It does not confirm the heartbeat exists, ` +
+        `and it says nothing about the heartbeat's state — read it back with jsm_list_heartbeats ` +
+        `before reporting that monitoring is active.`,
+      structured: (pong) => ({
+        pinged: true,
+        name: params.name,
+        ...(pong?.message ? { message: pong.message } : {}),
+      }),
     }),
 });
 

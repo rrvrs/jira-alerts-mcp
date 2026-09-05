@@ -363,7 +363,7 @@ export function defineCreateOperation<T>(
         // them as async would point the model at a request id that was never
         // issued.
         mode: "sync",
-        subject: { key: config.idParam, noun: config.noun },
+        subject: { key: config.idParam, noun: prose(config.noun) },
         render: op.render,
         structured: (item) => ({ [config.noun]: item as Record<string, unknown> }),
       }),
@@ -399,7 +399,7 @@ export function defineUpdateOperation<T>(
         path: itemPath(config, typed, id),
         body: op.toBody(typed),
         mode: "sync",
-        subject: { key: config.idParam, value: id, noun: config.noun },
+        subject: { key: config.idParam, value: id, noun: prose(config.noun) },
         render: op.render,
         structured: (item) => ({ [config.noun]: item as Record<string, unknown> }),
       });
@@ -429,7 +429,7 @@ export function defineRemoveOperation(config: ResourceConfig, op: RemoveOp): Any
         method: "DELETE",
         path: itemPath(config, typed, id),
         mode: "deleted",
-        subject: { key: config.idParam, value: id, noun: config.noun },
+        subject: { key: config.idParam, value: id, noun: prose(config.noun) },
       });
     },
   });

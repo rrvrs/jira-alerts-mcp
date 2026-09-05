@@ -110,6 +110,13 @@ function policyAction(
     extraInput?: z.ZodRawShape;
     body?: (params: Record<string, unknown>) => Record<string, unknown>;
     bodyFields?: string[];
+    /**
+     * enable and disable answer 200 with the updated policy; change-order
+     * answers 204 with nothing. Declaring the policy as the output of all
+     * three made every reorder fail validation with "expected object,
+     * received string", which is what an empty body deserialises to.
+     */
+    confirmOnly?: boolean;
   },
 ): AnyToolDefinition {
   return defineTool({
@@ -134,7 +141,9 @@ function policyAction(
       team_id: scopeField,
       ...(options.extraInput ?? {}),
     },
-    outputSchema: policyOutput,
+    outputSchema: options.confirmOnly
+      ? { confirmed: z.boolean(), policy_id: z.string() }
+      : policyOutput,
     annotations: {
       readOnlyHint: false,
       destructiveHint: options.destructive,
@@ -147,9 +156,16 @@ function policyAction(
         method: "POST",
         path: `${basePath(params.team_id)}/${encodeURIComponent(params.policy_id)}/${action}`,
         ...(options.body ? { body: options.body(params) } : {}),
-        mode: "sync",
-        render: (item) => renderPolicy(item),
-        structured: (item) => ({ policy: item as Record<string, unknown> }),
+        ...(options.confirmOnly
+          ? {
+              mode: "confirmed" as const,
+              subject: { key: "policy_id", value: params.policy_id, noun: "policy" },
+            }
+          : {
+              mode: "sync" as const,
+              render: (item: Policy) => renderPolicy(item),
+              structured: (item: Policy) => ({ policy: item as Record<string, unknown> }),
+            }),
       }),
   });
 }
@@ -188,12 +204,15 @@ Args:
   - policy_id (string), team_id (string, optional)
   - order (number): the new position
 
-Returns: { "policy": { "id": string, "order": number, ... } }
+Returns: { "confirmed": true, "policy_id": string }
+
+The API answers 204 with no body, so nothing about the policy comes back — re-read it with jsm_get_policy if you need to show the new position.
 
 Order is behaviour, not presentation: policies apply in order, and an alert policy with continue=false stops the chain where it matches. Moving one can therefore silently disable every policy beneath it.
 
 Read jsm_list_alert_policies or jsm_list_team_policies first and say what the resulting order will be.`,
   destructive: true,
+  confirmOnly: true,
   extraInput: { order: z.number().int().min(0).describe("The policy's new position.") },
   body: (params) => ({ order: params.order }),
   bodyFields: ["order"],
