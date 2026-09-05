@@ -433,6 +433,40 @@ Teams and permissions — the `teams` toolset, **not** registered by default:
 | `jsm_activate_contact` | `PATCH /v1/users/contacts/{id}/activate` | write |
 | `jsm_deactivate_contact` | `PATCH /v1/users/contacts/{id}/deactivate` | **destructive** |
 
+Maintenance windows — the `maintenance` toolset, **not** registered by default:
+
+| Tool | Endpoint | Read/Write |
+|---|---|---|
+| `jsm_list_maintenances` | `GET /v1/maintenances` or `GET /v1/teams/{id}/maintenances` | read |
+| `jsm_get_maintenance` | `GET /v1/maintenances/{id}` or the team twin | read |
+| `jsm_create_maintenance` | `POST /v1/maintenances` or the team twin | write |
+| `jsm_update_maintenance` | `PATCH /v1/maintenances/{id}` or the team twin | **destructive** |
+| `jsm_delete_maintenance` | `DELETE /v1/maintenances/{id}` or the team twin | **destructive** |
+| `jsm_cancel_maintenance` | `POST /v1/maintenances/{id}/cancel` or the team twin | write |
+
+Each of these is one tool over two endpoints: pass `team_id` for a team's
+windows, omit it for site-wide ones. They are separate collections, so omitting
+`team_id` does not return both — worth knowing when you are trying to explain
+why alerting has gone quiet.
+
+Heartbeats — the `heartbeats` toolset, **not** registered by default:
+
+| Tool | Endpoint | Read/Write |
+|---|---|---|
+| `jsm_list_heartbeats` | `GET /v1/teams/{id}/heartbeats` | read |
+| `jsm_ping_heartbeat` | `GET /v1/teams/{id}/heartbeats/ping` | **destructive** |
+| `jsm_create_heartbeat` | `POST /v1/teams/{id}/heartbeats` | write |
+| `jsm_update_heartbeat` | `PATCH /v1/teams/{id}/heartbeats?name=` | **destructive** |
+| `jsm_delete_heartbeat` | `DELETE /v1/teams/{id}/heartbeats?name=` | **destructive** |
+
+Heartbeats are identified by `name` in the query string rather than by an id in
+the path — there is no item URL for them. They are a paid feature: on a plan
+without them every heartbeat endpoint answers `402 Please upgrade your pricing
+plan for Heartbeat Monitoring`, which the error handler reports as a plan limit
+rather than as something to retry. `jsm_ping_heartbeat` is marked
+destructive because sending a ping by hand asserts, on the monitored job's
+behalf, that it is alive: it resets the timer and clears a firing alert.
+
 Enable them with `JSM_TOOLSETS=responder,schedules,teams`, or `JSM_TOOLSETS=admin` for
 on-call reads plus schedule and team configuration. They are separate from
 `responder` on purpose: editing a rotation or granting a role is not something a

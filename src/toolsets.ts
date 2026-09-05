@@ -25,7 +25,15 @@
 import type { AnyToolDefinition } from "./tools/define.js";
 
 /** Every toolset that ships tools today. */
-export const TOOLSETS = ["alerts", "alert-actions", "oncall", "schedules", "teams"] as const;
+export const TOOLSETS = [
+  "alerts",
+  "alert-actions",
+  "oncall",
+  "schedules",
+  "teams",
+  "maintenance",
+  "heartbeats",
+] as const;
 
 export type ToolsetName = (typeof TOOLSETS)[number];
 
@@ -65,6 +73,14 @@ export const TOOLSET_INFO: Record<ToolsetName, ToolsetInfo> = {
   },
   teams: {
     summary: "Teams and permissions: team discovery, team roles, user roles, contact methods.",
+    scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
+  },
+  maintenance: {
+    summary: "Maintenance windows: silence integrations, policies and syncs for a period.",
+    scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
+  },
+  heartbeats: {
+    summary: "Heartbeats: dead-man's switches that alert when an expected ping stops arriving.",
     scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
   },
 };
@@ -115,7 +131,7 @@ export const PROFILES = {
   // working an incident. Deliberately separate from `responder`: editing a
   // schedule mid-page is not a thing a responder should be one tool call away
   // from, and the write scopes are a different grant.
-  admin: { toolsets: ["oncall", "schedules", "teams"] },
+  admin: { toolsets: ["oncall", "schedules", "teams", "maintenance", "heartbeats"] },
   all: { toolsets: TOOLSETS },
 } as const satisfies Record<string, { toolsets: readonly ToolsetName[]; only?: readonly string[] }>;
 

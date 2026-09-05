@@ -37,7 +37,14 @@ export type WriteMode =
 export interface WriteOptions<T> {
   /** Human label for the action, used in the receipt and in error messages. */
   label: string;
-  method: "POST" | "PUT" | "PATCH" | "DELETE";
+  /**
+   * GET is here for exactly one endpoint: the heartbeat ping,
+   * GET /v1/teams/{teamId}/heartbeats/ping, which mutates state — it resets
+   * the timer and clears a firing alert. It is a write however it is spelled,
+   * and routing it through here is what keeps its annotations and its error
+   * handling consistent with every other write.
+   */
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** The full path below the cloud-id root, e.g. "/v1/alerts/{id}/snooze". */
   path: string;
   body?: unknown;

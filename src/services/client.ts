@@ -319,6 +319,17 @@ export function handleApiError(error: unknown, context: string, hints?: ErrorHin
         }
         case 422:
           return `Error (${context}): the request was well-formed but could not be processed.${detail}`;
+        // 402 is a plan limit, not a fault. Without this it falls through to
+        // the generic branch, which reads like something to debug or retry —
+        // heartbeats answer 402 on every endpoint when the site's plan does not
+        // include them.
+        case 402:
+          return (
+            `Error (${context}): this feature is not included in the site's JSM plan.${detail} ` +
+            `This is a billing limit rather than a fault: the request was well-formed and the ` +
+            `credentials are fine. Report it to the user — retrying, changing scopes or altering ` +
+            `the request will not help.`
+          );
         case 429:
           return (
             `Error (${context}): rate limited by Atlassian.${detail} ` +

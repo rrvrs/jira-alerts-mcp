@@ -80,6 +80,19 @@ export interface ResourceConfig {
    * and sending the wrong one is a 405 rather than a silent no-op.
    */
   updateMethod?: "PATCH" | "PUT";
+  /**
+   * A team-scoped twin of this resource, used when its parameter is supplied.
+   *
+   * Several families exist twice: `/v1/maintenances` and
+   * `/v1/teams/{teamId}/maintenances` are the same six operations against a
+   * different scope. Two tools per operation would double the surface for no
+   * new capability and force the model to pick between near-identical
+   * descriptions — so one tool takes an optional team id and switches the path,
+   * and the manifest declares both endpoints. This is the narrow collapse rule:
+   * identical annotations, identical input shape but for one value, and no
+   * conditional requiredness.
+   */
+  scoped?: { path: string; parent: ParentParam };
   /** Singular noun for receipts and messages, e.g. "schedule". */
   noun: string;
   /** Key the items sit under in structuredContent, e.g. "schedules". */
@@ -173,13 +186,39 @@ function prose(name: string): string {
   return name.replace(/_/g, " ");
 }
 
-/** Substitutes the parent ids into the collection path. */
+/** Substitutes the parent ids into the collection path, picking the scoped twin if asked. */
 function collectionPath(config: ResourceConfig, params: Record<string, unknown>): string {
-  let path = config.path;
-  for (const parent of config.parents ?? []) {
+  const scopedTo = config.scoped ? params[config.scoped.parent.param] : undefined;
+  let path = scopedTo !== undefined && scopedTo !== null ? config.scoped!.path : config.path;
+
+  const parents = [
+    ...(config.parents ?? []),
+    ...(scopedTo !== undefined && scopedTo !== null ? [config.scoped!.parent] : []),
+  ];
+  for (const parent of parents) {
     path = path.replace(`{${parent.token}}`, encodeURIComponent(String(params[parent.param])));
   }
   return path;
+}
+
+/** Both manifest paths for a resource that has a team-scoped twin. */
+function manifestPaths(config: ResourceConfig, suffix = ""): string[] {
+  return [`${config.path}${suffix}`, ...(config.scoped ? [`${config.scoped.path}${suffix}`] : [])];
+}
+
+/** One endpoint declaration per path a tool may reach. */
+function declare(
+  method: EndpointDeclaration["method"],
+  paths: string[],
+  extra: Omit<EndpointDeclaration, "method" | "path"> = {},
+): EndpointDeclaration | EndpointDeclaration[] {
+  const declarations = paths.map((path) => ({ method, path, ...extra }));
+  return declarations.length === 1 ? declarations[0]! : declarations;
+}
+
+/** The optional scope parameter, present on every operation of a twinned family. */
+function scopedShape(config: ResourceConfig): z.ZodRawShape {
+  return config.scoped ? { [config.scoped.parent.param]: config.scoped.parent.field } : {};
 }
 
 /** `/v1/schedules` + "sched 1" -> `/v1/schedules/sched%201`. */
@@ -187,9 +226,9 @@ function itemPath(config: ResourceConfig, params: Record<string, unknown>, id: s
   return `${collectionPath(config, params)}/${encodeURIComponent(id)}`;
 }
 
-/** The manifest path uses the spec's brace form, not a real id. */
-function itemManifestPath(config: ResourceConfig): string {
-  return `${config.path}/{${config.itemToken ?? "id"}}`;
+/** The manifest paths use the spec's brace form, not a real id. */
+function itemManifestPaths(config: ResourceConfig): string[] {
+  return manifestPaths(config, `/{${config.itemToken ?? "id"}}`);
 }
 
 /** Parent ids are inputs on every operation in a nested family. */
@@ -202,14 +241,12 @@ export function defineListOperation<T, Ctx = undefined>(
   op: ListOp<T, Ctx>,
 ): AnyToolDefinition {
   const paging = config.paging;
-  const endpoint: EndpointDeclaration = {
-    method: "GET",
-    path: config.path,
+  const endpoint = declare("GET", manifestPaths(config), {
     query: [
       ...pagingQueryNames(paging ?? DEFAULT_DIALECT),
       ...(op.queryFields ?? Object.keys(op.query ?? {})),
     ],
-  };
+  });
 
   return defineTool({
     name: op.name,
@@ -219,6 +256,7 @@ export function defineListOperation<T, Ctx = undefined>(
     description: op.description,
     inputSchema: {
       ...parentShape(config),
+      ...scopedShape(config),
       ...(op.query ?? {}),
       limit: limitField,
       offset: offsetField,
@@ -272,11 +310,12 @@ export function defineGetOperation<T, Ctx = undefined>(
   return defineTool({
     name: op.name,
     toolset: config.toolset,
-    endpoint: { method: "GET", path: itemManifestPath(config) },
+    endpoint: declare("GET", itemManifestPaths(config)),
     title: op.title,
     description: op.description,
     inputSchema: {
       ...parentShape(config),
+      ...scopedShape(config),
       [config.idParam]: config.idField,
       response_format: responseFormatField,
     },
@@ -293,7 +332,7 @@ export function defineGetOperation<T, Ctx = undefined>(
         return fail(
           handleApiError(error, `get ${prose(config.noun)}`, {
             method: "GET",
-            path: itemManifestPath(config),
+            path: config.path,
           }),
         );
       }
@@ -308,10 +347,10 @@ export function defineCreateOperation<T>(
   return defineTool({
     name: op.name,
     toolset: config.toolset,
-    endpoint: { method: "POST", path: config.path, body: op.bodyFields },
+    endpoint: declare("POST", manifestPaths(config), { body: op.bodyFields }),
     title: op.title,
     description: op.description,
-    inputSchema: { ...parentShape(config), ...op.input },
+    inputSchema: { ...parentShape(config), ...scopedShape(config), ...op.input },
     outputSchema: op.output ?? { [config.noun]: passthroughItem },
     annotations: ANNOTATIONS.create,
     handler: async (params, client) =>
@@ -338,14 +377,17 @@ export function defineUpdateOperation<T>(
   return defineTool({
     name: op.name,
     toolset: config.toolset,
-    endpoint: {
-      method: config.updateMethod ?? "PATCH",
-      path: itemManifestPath(config),
+    endpoint: declare(config.updateMethod ?? "PATCH", itemManifestPaths(config), {
       body: op.bodyFields,
-    },
+    }),
     title: op.title,
     description: op.description,
-    inputSchema: { ...parentShape(config), [config.idParam]: config.idField, ...op.input },
+    inputSchema: {
+      ...parentShape(config),
+      ...scopedShape(config),
+      [config.idParam]: config.idField,
+      ...op.input,
+    },
     outputSchema: op.output ?? { [config.noun]: passthroughItem },
     annotations: ANNOTATIONS.update,
     handler: async (params, client) => {
@@ -369,10 +411,14 @@ export function defineRemoveOperation(config: ResourceConfig, op: RemoveOp): Any
   return defineTool({
     name: op.name,
     toolset: config.toolset,
-    endpoint: { method: "DELETE", path: itemManifestPath(config) },
+    endpoint: declare("DELETE", itemManifestPaths(config)),
     title: op.title,
     description: op.description,
-    inputSchema: { ...parentShape(config), [config.idParam]: config.idField },
+    inputSchema: {
+      ...parentShape(config),
+      ...scopedShape(config),
+      [config.idParam]: config.idField,
+    },
     outputSchema: { deleted: z.boolean(), [config.idParam]: z.string().optional() },
     annotations: ANNOTATIONS.remove,
     handler: async (params, client) => {

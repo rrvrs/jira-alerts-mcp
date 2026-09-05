@@ -339,6 +339,18 @@ describe("handleApiError", () => {
     assert.match(message, /field x is required; Also/);
   });
 
+  it("reports a 402 as a plan limit, not something to retry", () => {
+    // Heartbeats answer 402 on every endpoint when the plan excludes them.
+    // Falling through to the generic branch made that read like a fault.
+    const message = handleApiError(
+      httpError(402, "Please upgrade your pricing plan for Heartbeat Monitoring."),
+      "list heartbeats",
+    );
+    assert.match(message, /not included in the site's JSM plan/);
+    assert.match(message, /upgrade your pricing plan/);
+    assert.match(message, /retrying, changing scopes or altering the request will not help/);
+  });
+
   it("tells the caller to back off on a 429", () => {
     assert.match(handleApiError(httpError(429), "ctx"), /Wait a few seconds and retry/);
   });

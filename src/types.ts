@@ -317,3 +317,29 @@ export interface CustomUserRole {
   grantedRights?: string[];
   disallowedRights?: string[];
 }
+
+/** A maintenance window: a period in which named entities stop alerting. */
+export interface Maintenance {
+  id?: string;
+  status?: string;
+  description?: string;
+  startDate?: string;
+  endDate?: string;
+  time?: { type?: string; startDate?: string; endDate?: string };
+  rules?: Array<{ entity?: { id?: string; type?: string }; state?: string }>;
+}
+
+/** A heartbeat: a dead-man's switch that alerts when a ping stops arriving. */
+export interface Heartbeat {
+  name?: string;
+  description?: string;
+  interval?: number;
+  intervalUnit?: string;
+  enabled?: boolean;
+  /** "Unresponsive" | "Responsive" | "Off" | "Pending". */
+  status?: string;
+  ownerTeamId?: string;
+  alertMessage?: string;
+  alertTags?: string[];
+  alertPriority?: string;
+}
