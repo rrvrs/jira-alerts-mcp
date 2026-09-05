@@ -142,3 +142,49 @@ export const createOutputSchema = {
   result: z.string().optional(),
   alias: z.string().optional(),
 };
+
+export const unacknowledgeShape = {
+  ...actionBaseShape,
+  note: z
+    .string()
+    .max(25_000)
+    .optional()
+    .describe("Optional note explaining why the acknowledgement is being taken back."),
+};
+
+export const snoozeShape = {
+  ...actionBaseShape,
+  end_time: z
+    .string()
+    .datetime({ offset: true })
+    .describe(
+      "When the snooze ends, as an ISO 8601 instant with an offset, e.g. '2026-09-05T18:30:00Z'. " +
+        "Must be in the future — a past instant is accepted and the alert un-snoozes immediately.",
+    ),
+  note: z.string().max(25_000).optional().describe("Optional note recorded with the snooze."),
+};
+
+export const assignShape = {
+  ...actionBaseShape,
+  account_id: z
+    .string()
+    .min(1)
+    .describe(
+      "Atlassian account id of the assignee, e.g. '712020:9ae5385e-…'. NOT an email address and " +
+        "NOT a display name — both are rejected. Account ids appear in jsm_get_alert's responder " +
+        "and owner fields and in jsm_get_on_call.",
+    ),
+  note: z.string().max(25_000).optional().describe("Optional note recorded with the assignment."),
+};
+
+export const escalateShape = {
+  ...actionBaseShape,
+  escalation_id: z
+    .string()
+    .min(1)
+    .describe(
+      "Id of the escalation policy to escalate through. This is an escalation id, not a team or " +
+        "schedule id — the three are separate objects with separate ids.",
+    ),
+  note: z.string().max(25_000).optional().describe("Optional note recorded with the escalation."),
+};
