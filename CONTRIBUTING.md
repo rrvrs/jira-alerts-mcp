@@ -87,12 +87,12 @@ Related: `ToolResult` in `src/services/format.ts` is a **type alias, not an inte
 
 The descriptions in this repo are long on purpose. They are the only documentation the model reads, and they carry three API behaviours that silently break naive integrations: writes are asynchronous, `tinyId` is not an id, and the search window caps at 20,000. If you add a tool with a sharp edge, state it in the description — not just in a code comment.
 
-## Deliberately out of scope
+## Not implemented yet
 
-- `DELETE /v1/alerts/{id}` — destroys audit history with no undo.
-- Alert **creation** — belongs to the integration API (`/jsm/ops/integration/v2/alerts`) with an integration key, not to an interactive agent.
+- Alert **creation**. This was previously documented here as out of scope, on the grounds that creation belongs to the integration API (`/jsm/ops/integration/v2/alerts`) with an integration key. That is wrong: `POST /v1/alerts` is part of this API, takes the same credentials as every other tool, requires only `read:ops-alert:jira-service-management` + `write:ops-alert:jira-service-management`, and returns the same `{result, requestId}` receipt as the other writes — at HTTP 200 rather than 202, but asynchronous all the same. It is a gap, and it is planned.
+- `DELETE /v1/alerts/{id}` — destroys audit history with no undo, which is why it has waited rather than why it is forbidden.
 
-If you have a concrete need for either, open an issue describing the workflow before writing code.
+If you need either sooner, open an issue describing the workflow.
 
 ## Pull requests
 

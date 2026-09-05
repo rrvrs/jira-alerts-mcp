@@ -84,7 +84,7 @@ export class JsmClient {
    * Query params with `undefined` values are dropped by axios automatically.
    */
   async request<T>(
-    method: "GET" | "POST" | "PUT" | "DELETE",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     options: { params?: Record<string, unknown> | undefined; body?: unknown } = {},
   ): Promise<T> {

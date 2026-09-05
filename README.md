@@ -294,10 +294,12 @@ still unacknowledged, and acknowledges it again.
 | `jsm_get_next_on_call` | `GET /v1/schedules/{id}/next-on-calls` | read |
 | `jsm_get_schedule_timeline` | `GET /v1/schedules/{id}/timeline` | read |
 
-Deliberately **not** implemented: `DELETE /v1/alerts/{id}` and alert creation.
-Deleting alerts destroys audit history with no undo, and alert creation belongs
-to the integration API (`/jsm/ops/integration/v2/alerts`) with an integration
-key, not to an interactive agent. Open an issue if you have a concrete need.
+Not implemented yet: alert creation and `DELETE /v1/alerts/{id}`. Creation is a
+gap rather than a boundary — `POST /v1/alerts` is part of this API and needs only
+the `write:ops-alert:jira-service-management` scope the existing write tools
+already require — and it is planned. Deleting an alert destroys audit history
+with no undo, which is why it has waited. Open an issue if you need either
+sooner.
 
 ---
 
@@ -331,10 +333,17 @@ the rehosted Opsgenie surface — with its own scopes, its own id format and its
 own asynchronous write semantics. The MCP Registry lists 30 Jira servers; every
 one of them talks to work items. None can tell you what is paging you right now.
 [`atlassian/atlassian-mcp-server`](https://github.com/atlassian/atlassian-mcp-server)
-does not close the gap either: it covers Jira, Confluence, JSM *requests*,
-Bitbucket, Compass and the Teamwork Graph, but has no tool for alerts, schedules
-or on-call — and being a hosted, closed server, that gap is Atlassian's to close
-rather than something a contribution can fix.
+narrows the gap but does not close it. Since February 2026 it ships four JSM
+Operations tools — `getJsmOpsAlerts`, `getJsmOpsScheduleInfo`, `getJsmOpsTeamInfo`
+and `updateJsmOpsAlert` — and they are coarse: a single `updateJsmOpsAlert` covers
+acknowledge, unacknowledge, close and escalate, and nothing covers notes, logs,
+tags, attachments, snooze, assign, request status, timelines, rotations,
+overrides, heartbeats, maintenance, routing, integrations or audit logs. They are
+also absent from that repository's README, documented only on Atlassian's
+[supported tools page](https://support.atlassian.com/atlassian-rovo-mcp-server/docs/supported-tools/),
+and were API-token-only at launch — an OAuth install sees none of them. Being a
+hosted, closed server, those gaps are Atlassian's to close rather than something
+a contribution can fix.
 
 **The Opsgenie MCP servers that do exist speak an API with an end date.**
 [giantswarm/mcp-opsgenie](https://github.com/giantswarm/mcp-opsgenie),
