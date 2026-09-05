@@ -15,8 +15,11 @@ import {
   CORE_TOOL_NAMES,
   PROFILES,
   resolveSelection,
+  TOOLSET_INFO,
   ToolsetSelectionError,
   TOOLSETS,
+  UNVERIFIED_TOOLSETS,
+  VERIFIED_TOOLSETS,
 } from "./toolsets.js";
 import { callTool, stubClient, textOf } from "./tools/test-support.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -57,14 +60,47 @@ describe("resolveSelection", () => {
     assert.ok(!names(selection).includes("jsm_create_schedule"));
   });
 
-  it("registers every toolset under `all`", () => {
+  it("registers every VERIFIED toolset under `all`, and no others", () => {
+    // `all` deliberately does not mean every toolset. A family that has never
+    // been seen to work against a live tenant ships, but has to be named on
+    // its own — otherwise asking for everything quietly hands someone tools
+    // whose only evidence is that they compile.
     const selection = resolveSelection(allTools, { env: { JSM_TOOLSETS: "all" } });
 
-    assert.deepEqual(selection.toolsets, [...TOOLSETS]);
-    assert.deepEqual(
-      names(selection),
-      allTools.map((tool) => tool.name),
-    );
+    assert.deepEqual(selection.toolsets, [...VERIFIED_TOOLSETS]);
+    assert.ok(VERIFIED_TOOLSETS.length < TOOLSETS.length, "there should be quarantined toolsets");
+    for (const toolset of UNVERIFIED_TOOLSETS) {
+      assert.ok(
+        !selection.toolsets.includes(toolset),
+        `'all' pulled in ${toolset}, which is unverified`,
+      );
+    }
+  });
+
+  it("keeps every unverified toolset out of every profile", () => {
+    // The invariant 2.0.0 is built on: everything a profile can load has
+    // returned a real success against the API. Removing a family's
+    // `unverified` reason is the one edit that lets it back in, and that edit
+    // has to explain itself.
+    for (const [profileName, profile] of Object.entries(PROFILES)) {
+      for (const toolset of profile.toolsets) {
+        assert.ok(
+          !TOOLSET_INFO[toolset].unverified,
+          `profile '${profileName}' loads '${toolset}', which is marked unverified`,
+        );
+      }
+    }
+  });
+
+  it("still lets someone name an unverified toolset explicitly", () => {
+    // Quarantine, not deletion — a site whose plan includes heartbeats has to
+    // have a way in, and this is it.
+    const selection = resolveSelection(allTools, {
+      env: { JSM_TOOLSETS: "all,heartbeats" } as NodeJS.ProcessEnv,
+    });
+
+    assert.ok(selection.toolsets.includes("heartbeats"));
+    assert.ok(names(selection).includes("jsm_list_heartbeats"));
   });
 
   it("still offers the pre-toolset thirteen, plus create, as `core`", () => {
@@ -132,14 +168,16 @@ describe("resolveSelection", () => {
     assert.equal(names(selection).includes("jsm_acknowledge_alert"), false);
   });
 
-  it("registers the whole catalogue for 'all'", () => {
+  it("registers every verified tool for 'all', and nothing quarantined", () => {
     const selection = resolveSelection(allTools, {
       env: { JSM_TOOLSETS: "all" } as NodeJS.ProcessEnv,
     });
 
     assert.deepEqual(
       names(selection),
-      allTools.map((tool) => tool.name),
+      allTools
+        .filter((tool) => !UNVERIFIED_TOOLSETS.includes(tool.toolset as never))
+        .map((tool) => tool.name),
     );
   });
 

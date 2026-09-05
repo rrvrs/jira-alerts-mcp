@@ -10,7 +10,7 @@ import { executeWrite } from "../execute-write.js";
 
 export const deleteAlertAttachment = defineTool({
   name: "jsm_delete_alert_attachment",
-  toolset: "alert-actions",
+  toolset: "attachments",
   endpoint: { method: "DELETE", path: "/v1/alerts/{alertId}/attachments/{id}" },
   title: "Delete a file attached to a JSM alert",
   description: `Permanently remove one attachment from a JSM alert.

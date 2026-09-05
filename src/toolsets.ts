@@ -34,7 +34,8 @@ export const TOOLSETS = [
   "maintenance",
   "heartbeats",
   "routing",
-  "policies",
+  "attachments",
+  "forwarding",
 ] as const;
 
 export type ToolsetName = (typeof TOOLSETS)[number];
@@ -54,6 +55,17 @@ export interface ToolsetInfo {
   summary: string;
   /** OAuth scopes every tool in this set needs. */
   scopes: string[];
+  /**
+   * Absent means every tool here has returned a real success against a live
+   * tenant. Present says, in one sentence, why that could not be established —
+   * and keeps the family out of every profile.
+   *
+   * The rule this enforces: a family reaches a profile only after it has been
+   * seen to work. Everything else still ships, because the code is very likely
+   * correct and a site on a different plan would use it, but it has to be
+   * named explicitly in JSM_TOOLSETS. A test asserts no profile carries one.
+   */
+  unverified?: string;
 }
 
 export const TOOLSET_INFO: Record<ToolsetName, ToolsetInfo> = {
@@ -84,16 +96,49 @@ export const TOOLSET_INFO: Record<ToolsetName, ToolsetInfo> = {
   heartbeats: {
     summary: "Heartbeats: dead-man's switches that alert when an expected ping stops arriving.",
     scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
+    unverified:
+      "Heartbeat Monitoring is not in every JSM plan. Every endpoint except the ping " +
+      "answered 402 'Please upgrade your pricing plan' on the tenant these tools were " +
+      "tested against, so only jsm_ping_heartbeat has been seen to work.",
   },
   routing: {
     summary: "Who gets notified: escalations, routing rules, forwarding rules, notification rules.",
     scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
   },
-  policies: {
-    summary: "Alert and notification policies: rewrite, delay or suppress alerts as they arrive.",
+  attachments: {
+    summary: "Alert attachments: list, download and delete files attached to an alert.",
+    scopes: ["read:ops-alert:jira-service-management", "write:ops-alert:jira-service-management"],
+    unverified:
+      "The attachment endpoints answered 403 'Feature not available in your plan' on the " +
+      "tenant these tools were tested against, for a fully scoped token holding Jira " +
+      "admin. The API also declares no OAuth scope for them, so the scopes above are " +
+      "inferred from the alert family rather than read from the spec.",
+  },
+  forwarding: {
+    summary: "Forwarding rules: send one person's notifications to someone else for a period.",
     scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
+    unverified:
+      "A forwarding rule needs two distinct users and the API refuses to forward someone " +
+      "to themselves, so on a single-user tenant only jsm_list_forwarding_rules could be " +
+      "exercised. Nothing here is known to be broken; it is untested.",
   },
 };
+
+/**
+ * The toolsets a profile is allowed to include: every one that has been seen to
+ * work against a live tenant.
+ *
+ * Derived rather than listed, so marking a family `unverified` is the single
+ * edit that removes it from `all` — there is no second place to forget.
+ */
+export const VERIFIED_TOOLSETS: ToolsetName[] = TOOLSETS.filter(
+  (name) => !TOOLSET_INFO[name].unverified,
+);
+
+/** The toolsets that ship but no profile loads. Reported by jsm_list_capabilities. */
+export const UNVERIFIED_TOOLSETS: ToolsetName[] = TOOLSETS.filter((name) =>
+  Boolean(TOOLSET_INFO[name].unverified),
+);
 
 /**
  * The `core` profile: the tools that shipped before toolsets existed, plus
@@ -142,9 +187,13 @@ export const PROFILES = {
   // schedule mid-page is not a thing a responder should be one tool call away
   // from, and the write scopes are a different grant.
   admin: {
-    toolsets: ["oncall", "schedules", "teams", "maintenance", "heartbeats", "routing", "policies"],
+    toolsets: ["oncall", "schedules", "teams", "maintenance", "routing"],
   },
-  all: { toolsets: TOOLSETS },
+  // "Every verified toolset", not literally every toolset. A family carrying an
+  // `unverified` reason has to be named on its own — `JSM_TOOLSETS=all,heartbeats`
+  // — so that asking for everything cannot quietly hand someone tools that have
+  // never been seen to work.
+  all: { toolsets: VERIFIED_TOOLSETS },
 } as const satisfies Record<string, { toolsets: readonly ToolsetName[]; only?: readonly string[] }>;
 
 /**

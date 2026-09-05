@@ -22,7 +22,7 @@ import { paginationOutputShape } from "../../schemas/common.js";
 
 export const listAlertAttachments = defineTool({
   name: "jsm_list_alert_attachments",
-  toolset: "alerts",
+  toolset: "attachments",
   endpoint: {
     method: "GET",
     path: "/v1/alerts/{alertId}/attachments",
@@ -88,7 +88,7 @@ Note the id is a timestamp rendered as a string, so it is not meaningfully order
 
 export const getAlertAttachment = defineTool({
   name: "jsm_get_alert_attachment",
-  toolset: "alerts",
+  toolset: "attachments",
   endpoint: { method: "GET", path: "/v1/alerts/{alertId}/attachments/{id}" },
   title: "Get a download URL for a JSM alert attachment",
   description: `Get a temporary download URL for one file attached to a JSM alert.
