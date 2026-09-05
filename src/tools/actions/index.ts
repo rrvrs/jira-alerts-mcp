@@ -14,6 +14,8 @@ import { addAlertResponder } from "./add-responder.js";
 import { closeAlert } from "./close.js";
 import { createAlert } from "./create-alert.js";
 import { escalateAlert } from "./escalate.js";
+import { addAlertExtraProperties, removeAlertExtraProperties } from "./extra-properties.js";
+import { addAlertTags, removeAlertTags } from "./tags.js";
 import { assignAlert } from "./assign.js";
 import { snoozeAlert } from "./snooze.js";
 import { unacknowledgeAlert } from "./unacknowledge.js";
@@ -32,6 +34,10 @@ export const alertActionTools: AnyToolDefinition[] = [
   addAlertNote,
   updateAlertNote,
   deleteAlertNote,
+  addAlertTags,
+  removeAlertTags,
+  addAlertExtraProperties,
+  removeAlertExtraProperties,
   addAlertResponder,
 ];
 

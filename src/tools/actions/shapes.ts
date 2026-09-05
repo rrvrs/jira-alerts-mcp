@@ -237,3 +237,39 @@ export const deletedOutputSchema = {
   deleted: z.boolean(),
   note_id: z.string().optional(),
 };
+
+/** Optional note, shared by the tag and extra-property tools. */
+const changeNoteField = z
+  .string()
+  .max(25_000)
+  .optional()
+  .describe("Optional note recorded with the change.");
+
+const tagsField = z
+  .array(z.string().min(1))
+  .min(1, "pass at least one tag")
+  .describe("Tag names. Case-sensitive, and matched exactly on removal.");
+
+export const addTagsShape = { ...actionBaseShape, tags: tagsField, note: changeNoteField };
+
+export const removeTagsShape = { ...actionBaseShape, tags: tagsField, note: changeNoteField };
+
+export const addExtraPropertiesShape = {
+  ...actionBaseShape,
+  extra_properties: z
+    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+    .describe(
+      "Key/value context to attach, e.g. {'runbook': 'https://…', 'region': 'us-east-1'}. " +
+        "A key that already exists is overwritten.",
+    ),
+  note: changeNoteField,
+};
+
+export const removeExtraPropertiesShape = {
+  ...actionBaseShape,
+  keys: z
+    .array(z.string().min(1))
+    .min(1, "pass at least one key")
+    .describe("Property keys to remove. Keys, not values."),
+  note: changeNoteField,
+};
