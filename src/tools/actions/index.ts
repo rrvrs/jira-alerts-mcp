@@ -1,7 +1,7 @@
 /**
  * Alert write tools: acknowledge, close, add note, add responder.
  *
- * Every endpoint here is asynchronous — see ./execute-action.ts.
+ * Every endpoint here is asynchronous — see ./alert-action.ts.
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";

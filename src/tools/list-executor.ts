@@ -21,6 +21,7 @@ import {
   type ToolResult,
 } from "../services/format.js";
 import type { ResponseFormat } from "../schemas/common.js";
+import { DEFAULT_DIALECT, isUnpaged, pageSizeParams, type PagingDialect } from "./paging.js";
 
 export interface ListToolOptions<T> {
   client: JsmClient;
@@ -36,21 +37,32 @@ export interface ListToolOptions<T> {
   /** Context for error messages, e.g. "list alerts". */
   context: string;
   /**
-   * Page size requested. Sent to the API as `size`, which is what every paged
-   * JSM Operations endpoint reads — these tools spent a long time sending
-   * `limit`, which is not a parameter, so the API quietly served its own
-   * default (20 for alerts, 25 for schedules) and callers asking for 100
-   * records were told 20 was all of them.
+   * Page size requested. Sent under whatever name `paging` says the endpoint
+   * reads — these tools spent a long time sending `limit` to endpoints that
+   * read `size`, so the API quietly served its own default (20 for alerts, 25
+   * for schedules) and callers asking for 100 records were told 20 was all of
+   * them. `/v1/logs` is the one endpoint where `limit` is in fact correct,
+   * which is why the name is per-endpoint rather than global.
    */
   limit: number;
   /** Numeric offset, for offset-paged endpoints. Omit for cursor-paged ones. */
   offset?: number;
+  /**
+   * How this endpoint pages. Defaults to `size` + `offset`, the common case.
+   * State it for anything else — see ./paging.ts.
+   */
+  paging?: PagingDialect;
   render: (items: T[]) => string;
   /** Shown when the API returns nothing. Say what to try next, not just "none". */
   emptyMessage: string;
   /** Appended to a truncated response, telling the model how to get the rest. */
   hint: string;
   format: ResponseFormat;
+  /**
+   * Envelope key the items sit under, for the endpoints that use neither
+   * `data` nor `values` — `GET /v1/teams` answers under `platformTeams`.
+   */
+  itemsKey?: string | undefined;
 }
 
 export async function executeList<T>({
@@ -65,9 +77,15 @@ export async function executeList<T>({
   emptyMessage,
   hint,
   format,
+  paging = DEFAULT_DIALECT,
+  itemsKey,
 }: ListToolOptions<T>): Promise<ToolResult> {
   try {
-    const page = await client.getCollection<T>(path, { ...params, size: limit });
+    const page = await client.getCollection<T>(
+      path,
+      { ...params, ...pageSizeParams(paging, limit) },
+      { itemsKey },
+    );
 
     // An empty page is an ordinary answer, not an error — but it still has to
     // ship a structured payload or the SDK rejects the whole result.
@@ -90,6 +108,7 @@ export async function executeList<T>({
         // undefined here, leaving next_offset to do the work.
         nextCursor: extractLinkParam(page.paging?.next, "after"),
         nextLink: page.paging?.next,
+        unpaged: isUnpaged(paging),
       }),
     };
 

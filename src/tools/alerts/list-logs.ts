@@ -52,6 +52,7 @@ Examples:
       // `after` is the cursor parameter these endpoints read; `offset` is not
       // one of their parameters at all, so paging used to re-serve page one.
       params: { order: params.order, after: params.offset },
+      paging: { kind: "cursor" },
       key: "logs",
       context: "list alert logs",
       limit: params.limit,

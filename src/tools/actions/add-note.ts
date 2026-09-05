@@ -3,7 +3,7 @@
  */
 
 import { defineTool } from "../define.js";
-import { executeAction } from "./execute-action.js";
+import { alertAction } from "./alert-action.js";
 import { asyncOutputSchema, addNoteShape } from "./shapes.js";
 
 export const addAlertNote = defineTool({
@@ -35,7 +35,7 @@ Examples:
     openWorldHint: true,
   },
   handler: async (params, client) =>
-    executeAction(client, "Add note", params.alert_id, "notes", {
+    alertAction(client, "Add note", params.alert_id, "notes", {
       note: params.note,
       user: params.user,
       source: params.source,

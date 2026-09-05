@@ -84,6 +84,11 @@ export interface PaginationInput {
    * the API knows whether more records exist and we do not.
    */
   nextLink?: string | undefined;
+  /**
+   * True when the endpoint accepts no paging parameters, so there is no later
+   * page to fetch however full this one looks.
+   */
+  unpaged?: boolean | undefined;
 }
 
 /**
@@ -120,6 +125,7 @@ export function buildPagination({
   totalCount,
   nextCursor,
   nextLink,
+  unpaged,
 }: PaginationInput): PaginationMeta {
   const truncated = returned < fetched;
 
@@ -129,7 +135,14 @@ export function buildPagination({
   // `limit`, so a capped 20-record page never equalled a requested 100 and
   // every full page reported has_more: false. A caller that trusted that
   // stopped paging while records remained.
-  const hasMore = nextCursor || nextLink ? true : truncated || (fetched > 0 && fetched >= limit);
+  // An endpoint that takes no paging parameters returns its whole collection,
+  // so a full-looking page means nothing. Left to the heuristic below, one that
+  // happens to hold exactly `limit` records would advertise a next page forever.
+  const hasMore = unpaged
+    ? truncated
+    : nextCursor || nextLink
+      ? true
+      : truncated || (fetched > 0 && fetched >= limit);
 
   return {
     count: returned,
@@ -154,6 +167,24 @@ export function emptyResult(text: string, key: string, limit: number, offset?: n
   return ok(text, {
     [key]: [],
     pagination: buildPagination({ returned: 0, fetched: 0, limit, offset }),
+  });
+}
+
+/**
+ * Result envelope for a write that removed something and got 204 back.
+ *
+ * Exists for the same reason emptyResult does: the tool declares an
+ * outputSchema, so `ok(text)` with no structuredContent is rejected outright by
+ * the SDK. A body-less success still has to ship a structured payload.
+ */
+export function renderDeleted(
+  label: string,
+  subject?: { key: string; value: string; noun: string },
+): ToolResult {
+  const target = subject ? ` for ${subject.noun} \`${subject.value}\`` : "";
+  return ok(`${label} succeeded${target}. The API confirmed it with no response body.`, {
+    deleted: true,
+    ...(subject ? { [subject.key]: subject.value } : {}),
   });
 }
 
@@ -577,17 +608,18 @@ export function renderTimeline(shifts: RenderableShift[], options: TimelineRende
  */
 export function renderAsyncReceipt(
   action: string,
-  alertId: string,
+  subject: { noun: string; id: string },
   response: AsyncActionResponse,
 ): string {
   return [
-    `${action} request accepted for alert \`${alertId}\`.`,
+    `${action} request accepted for ${subject.noun} \`${subject.id}\`.`,
     "",
     `- **Request id**: \`${response.requestId ?? "not returned"}\``,
     `- **Result**: ${response.result ?? "queued"}`,
     "",
-    "JSM applies alert actions asynchronously, so the alert may not reflect this change immediately. " +
-      "Confirm with jsm_get_request_status using the request id above, or re-read the alert after a moment.",
+    `JSM applies these actions asynchronously, so the ${subject.noun} may not reflect this change ` +
+      "immediately. Confirm with jsm_get_request_status using the request id above, or re-read the " +
+      `${subject.noun} after a moment.`,
   ].join("\n");
 }
 

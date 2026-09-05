@@ -3,7 +3,7 @@
  */
 
 import { defineTool } from "../define.js";
-import { executeAction } from "./execute-action.js";
+import { alertAction } from "./alert-action.js";
 import { asyncOutputSchema, closeShape } from "./shapes.js";
 
 export const closeAlert = defineTool({
@@ -37,7 +37,7 @@ Don't use when: the alert is still being worked — acknowledge instead.`,
     openWorldHint: true,
   },
   handler: async (params, client) =>
-    executeAction(client, "Close", params.alert_id, "close", {
+    alertAction(client, "Close", params.alert_id, "close", {
       user: params.user,
       source: params.source,
       note: params.note,

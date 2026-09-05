@@ -30,7 +30,15 @@ export const testConfig = loadConfig({
 export interface StubClient {
   client: JsmClient;
   /** Every request the tool issued, in order — JSM and Jira alike. */
-  calls: Array<{ path: string; params?: Record<string, unknown> | undefined }>;
+  calls: Array<{
+    path: string;
+    params?: Record<string, unknown> | undefined;
+    /** Set for calls that went through `request`, i.e. every write. */
+    method?: string;
+    body?: unknown;
+    /** The itemsKey a list tool asked getCollection to read, if any. */
+    itemsKey?: string | undefined;
+  }>;
 }
 
 export interface StubOptions {
@@ -43,6 +51,10 @@ export interface StubOptions {
   /** Response for client.jiraGet, or an error to throw from it. */
   jira?: unknown;
   jiraError?: unknown;
+  /** Response body for client.request — the path every write takes. */
+  write?: unknown;
+  /** Thrown from client.request instead of returning `write`. */
+  writeError?: unknown;
 }
 
 /**
@@ -57,11 +69,22 @@ export function stubClient(
   const route = (path: string) => options.routes?.find((r) => path.includes(r.match));
 
   const client = new (class extends JsmClient {
+    override async request<T>(
+      method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+      path: string,
+      requestOptions: { params?: Record<string, unknown> | undefined; body?: unknown } = {},
+    ): Promise<T> {
+      calls.push({ path, method, body: requestOptions.body, params: requestOptions.params });
+      if (options.writeError) throw options.writeError;
+      return (options.write ?? {}) as T;
+    }
+
     override async getCollection<T>(
       path: string,
       params?: Record<string, unknown>,
+      collectionOptions: { itemsKey?: string | undefined } = {},
     ): Promise<Paged<T>> {
-      calls.push({ path, params });
+      calls.push({ path, params, itemsKey: collectionOptions.itemsKey });
       const matched = route(path);
       if (matched?.error) throw matched.error;
       return (matched?.page ?? page) as Paged<T>;

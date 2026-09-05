@@ -3,7 +3,7 @@
  */
 
 import { defineTool } from "../define.js";
-import { executeAction } from "./execute-action.js";
+import { alertAction } from "./alert-action.js";
 import { asyncOutputSchema, addResponderShape } from "./shapes.js";
 
 export const addAlertResponder = defineTool({
@@ -40,7 +40,7 @@ Error handling:
     openWorldHint: true,
   },
   handler: async (params, client) =>
-    executeAction(client, "Add responder", params.alert_id, "responders", {
+    alertAction(client, "Add responder", params.alert_id, "responders", {
       id: params.responder_id,
       type: params.responder_type,
       user: params.user,
