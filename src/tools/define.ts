@@ -26,6 +26,32 @@ export interface ToolAnnotations {
   openWorldHint: boolean;
 }
 
+/**
+ * What a tool actually calls, checked against the vendored OpenAPI spec by
+ * scripts/check-endpoints.mjs.
+ *
+ * This is the same value the handler builds its request from, so it cannot
+ * drift from the handler without the handler breaking — which is the only
+ * reason a hand-written manifest is worth trusting.
+ */
+export interface EndpointDeclaration {
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  /** Path below the cloud-id root, with the spec's parameter braces: "/v1/alerts/{id}/notes". */
+  path: string;
+  /** Query parameter names this tool sends. */
+  query?: string[];
+  /** Request body field names this tool sends, in the API's own casing. */
+  body?: string[];
+  /**
+   * Query names to accept even though the spec does not declare them. Every
+   * entry needs a comment saying why — an unexplained one is how a wrong
+   * parameter becomes permanent.
+   */
+  allowUnknownQuery?: string[];
+  /** Body fields to accept though the spec does not declare them. Same rule. */
+  allowUnknownBody?: string[];
+}
+
 /** A tool as its own module writes it, with the handler's params inferred. */
 export interface ToolDefinition<Shape extends z.ZodRawShape> {
   name: string;
@@ -36,6 +62,11 @@ export interface ToolDefinition<Shape extends z.ZodRawShape> {
    * author never considered — probably the one users load by default.
    */
   toolset: ToolGroup;
+  /**
+   * The API call(s) this tool makes, or omitted for a tool that makes none.
+   * An array for a tool that reaches two endpoints, like jsm_get_alert.
+   */
+  endpoint?: EndpointDeclaration | EndpointDeclaration[];
   /**
    * The model's only documentation for this tool. State the sharp edges here,
    * not just in code comments — see CONTRIBUTING.md.

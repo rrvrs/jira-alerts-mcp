@@ -9,6 +9,13 @@ import { asyncOutputSchema, addNoteShape } from "./shapes.js";
 export const addAlertNote = defineTool({
   name: "jsm_add_alert_note",
   toolset: "alert-actions",
+  endpoint: {
+    method: "POST",
+    path: "/v1/alerts/{id}/notes",
+    body: ["note", "user", "source"],
+    // The spec declares only `note`. Opsgenie parity for the other two.
+    allowUnknownBody: ["user", "source"],
+  },
   title: "Add a note to a JSM alert",
   description: `Append a note to a JSM alert's activity timeline without changing its state.
 

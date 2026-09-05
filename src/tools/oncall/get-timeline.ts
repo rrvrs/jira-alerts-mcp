@@ -15,6 +15,11 @@ import { fetchTimeline, respondersOf, toShifts } from "./timeline.js";
 export const getScheduleTimeline = defineTool({
   name: "jsm_get_schedule_timeline",
   toolset: "oncall",
+  endpoint: {
+    method: "GET",
+    path: "/v1/schedules/{scheduleId}/timeline",
+    query: ["interval", "intervalUnit", "date", "expand"],
+  },
   title: "Get a schedule's shift boundaries",
   description: `Return the on-call rotation periods for a JSM schedule — who covers each shift, and exactly when each shift starts and ends.
 

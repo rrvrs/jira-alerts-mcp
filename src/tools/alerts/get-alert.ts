@@ -12,6 +12,10 @@ import { alertOutputShape, getAlertShape } from "./shapes.js";
 export const getAlert = defineTool({
   name: "jsm_get_alert",
   toolset: "alerts",
+  endpoint: [
+    { method: "GET", path: "/v1/alerts/{id}" },
+    { method: "GET", path: "/v1/alerts/alias", query: ["alias"] },
+  ],
   title: "Get JSM alert details",
   description: `Retrieve the full detail of a single JSM alert, including its description, custom details/extraProperties, responders, tags and dedupe count.
 

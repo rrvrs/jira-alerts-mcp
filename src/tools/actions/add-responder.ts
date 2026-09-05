@@ -9,6 +9,13 @@ import { asyncOutputSchema, addResponderShape } from "./shapes.js";
 export const addAlertResponder = defineTool({
   name: "jsm_add_alert_responder",
   toolset: "alert-actions",
+  endpoint: {
+    method: "POST",
+    path: "/v1/alerts/{id}/responders",
+    body: ["id", "type", "user", "source", "note"],
+    // The spec declares only id and type. Opsgenie parity for the rest.
+    allowUnknownBody: ["user", "source", "note"],
+  },
   title: "Add a responder to a JSM alert",
   description: `Add a responder (user, team, escalation or schedule) to an existing JSM alert so they are notified and become accountable for it.
 

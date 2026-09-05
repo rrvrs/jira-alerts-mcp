@@ -14,6 +14,24 @@ import { createAlertShape, createOutputSchema } from "./shapes.js";
 export const createAlert = defineTool({
   name: "jsm_create_alert",
   toolset: "alert-actions",
+  endpoint: {
+    method: "POST",
+    path: "/v1/alerts",
+    body: [
+      "message",
+      "alias",
+      "description",
+      "priority",
+      "responders",
+      "visibleTo",
+      "entity",
+      "tags",
+      "actions",
+      "extraProperties",
+      "note",
+      "source",
+    ],
+  },
   title: "Create a JSM alert",
   description: `Create a new alert in Jira Service Management Operations.
 
@@ -31,8 +49,9 @@ Args:
   - actions (string[], optional): names of custom actions configured in your org
   - extra_properties (object, optional): arbitrary key/value context
   - note (string, optional): note recorded on the new alert's timeline
-  - user (string, optional): actor name/email; defaults to the credential owner
-  - source (string, optional): source label for the activity log
+  - source (string, optional): where the alert came from, e.g. 'claude-mcp'
+
+There is no 'user' argument, unlike the other write tools: this endpoint has no actor override, and the alert is created as the owner of the credentials.
 
 Returns: { "requestId": string, "result": string, "alias": string }
 
@@ -78,7 +97,6 @@ Constraints and errors:
         actions: params.actions,
         extraProperties: params.extra_properties,
         note: params.note,
-        user: params.user,
         source: params.source,
       },
     }),

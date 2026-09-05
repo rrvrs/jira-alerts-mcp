@@ -9,6 +9,14 @@ import { asyncOutputSchema, closeShape } from "./shapes.js";
 export const closeAlert = defineTool({
   name: "jsm_close_alert",
   toolset: "alert-actions",
+  endpoint: {
+    method: "POST",
+    path: "/v1/alerts/{id}/close",
+    body: ["user", "source", "note"],
+    // No body declared in the spec — same Opsgenie-parity reasoning as
+    // acknowledge.ts, and the same thing to confirm on a tenant.
+    allowUnknownBody: ["user", "source", "note"],
+  },
   title: "Close a JSM alert",
   description: `Close a JSM alert, marking it resolved and ending all notifications for it.
 

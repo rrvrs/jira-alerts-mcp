@@ -1,0 +1,6 @@
+{
+  "source": "https://developer.atlassian.com/cloud/jira/service-desk-ops/swagger.v3.json",
+  "fetchedAt": "2026-09-05",
+  "sha256": "ed65f017bcb8eb65477e845e272a30ee6d3e0f7a1d422c6ff104941aa11f21d1",
+  "note": "Refresh with 'npm run spec:refresh'. The hash is verified by check-endpoints so a hand-edited spec cannot make a failing check pass."
+}

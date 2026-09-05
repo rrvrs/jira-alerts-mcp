@@ -15,6 +15,11 @@ import { listSchedulesShape } from "./shapes.js";
 export const listSchedules = defineTool({
   name: "jsm_list_schedules",
   toolset: "oncall",
+  endpoint: {
+    method: "GET",
+    path: "/v1/schedules",
+    query: ["query", "size", "offset", "expand"],
+  },
   title: "List JSM on-call schedules",
   description: `List the on-call schedules configured in JSM Operations, with their ids, owning teams and timezones.
 

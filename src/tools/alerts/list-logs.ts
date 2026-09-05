@@ -13,6 +13,13 @@ import { alertTimelineShape, paginationOutputShape } from "./shapes.js";
 export const listAlertLogs = defineTool({
   name: "jsm_list_alert_logs",
   toolset: "alerts",
+  endpoint: {
+    method: "GET",
+    path: "/v1/alerts/{id}/logs",
+    query: ["after", "size", "order"],
+    // Same unconfirmed `order` as the notes endpoint — see list-notes.ts.
+    allowUnknownQuery: ["order"],
+  },
   title: "List JSM alert activity logs",
   description: `List the system activity log for a JSM alert — every state transition, notification, escalation and automated action, newest first by default.
 

@@ -13,6 +13,17 @@ import { alertTimelineShape, paginationOutputShape } from "./shapes.js";
 export const listAlertNotes = defineTool({
   name: "jsm_list_alert_notes",
   toolset: "alerts",
+  endpoint: {
+    method: "GET",
+    path: "/v1/alerts/{id}/notes",
+    query: ["after", "size", "order"],
+    // The spec declares only `after` and `size`. `order` is Opsgenie parity —
+    // JSM Operations is a rehost and it worked there — but it is unconfirmed
+    // here, so it is recorded rather than assumed. If a tenant ever returns
+    // oldest-first regardless of this parameter, that is the answer: drop it
+    // from the shape and the description rather than leaving both promising it.
+    allowUnknownQuery: ["order"],
+  },
   title: "List JSM alert notes",
   description: `List the notes (human comments) recorded on a JSM alert's activity timeline, newest first by default.
 

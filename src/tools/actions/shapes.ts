@@ -128,7 +128,11 @@ export const createAlertShape = {
     .optional()
     .describe("Arbitrary key/value context carried on the alert, e.g. {'region': 'us-east-1'}."),
   note: z.string().max(25_000).optional().describe("Note recorded on the new alert's timeline."),
-  user: userField,
+  // No `user` here, unlike the other write shapes. CreateAlertRequest
+  // enumerates its twelve fields and `user` is not among them, so offering it
+  // would advertise an actor override the endpoint does not implement. The
+  // creating account is the credential owner; `source` is the field that
+  // records where the alert came from.
   source: sourceField,
 };
 
