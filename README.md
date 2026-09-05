@@ -508,6 +508,36 @@ Notification rules belong to the account the credentials authenticate as. There
 is no parameter for reading somebody else's, so a shared token cannot answer
 "why wasn't Priya notified?" from that endpoint.
 
+Alert and notification policies — the `policies` toolset, **not** registered by
+default:
+
+| Tool | Endpoint | Read/Write |
+|---|---|---|
+| `jsm_list_alert_policies` | `GET /v1/alerts/policies` | read |
+| `jsm_list_team_policies` | `GET /v1/teams/{id}/policies` | read |
+| `jsm_get_policy` | `GET /v1/alerts/policies/{id}` or the team twin | read |
+| `jsm_create_alert_policy` | `POST /v1/alerts/policies` | write |
+| `jsm_update_alert_policy` | `PUT /v1/alerts/policies/{id}` | **destructive** |
+| `jsm_create_team_policy` | `POST /v1/teams/{id}/policies` | write |
+| `jsm_update_team_policy` | `PUT /v1/teams/{id}/policies/{id}` | **destructive** |
+| `jsm_delete_policy` | `DELETE /v1/alerts/policies/{id}` or the team twin | **destructive** |
+| `jsm_enable_policy` | `POST /v1/alerts/policies/{id}/enable` or the team twin | write |
+| `jsm_disable_policy` | `POST /v1/alerts/policies/{id}/disable` | **destructive** |
+| `jsm_change_policy_order` | `POST /v1/alerts/policies/{id}/change-order` | **destructive** |
+
+Eleven tools over sixteen endpoints. Where the global and team versions have
+identical shapes they share one tool with an optional `team_id`; where they do
+not, they stay separate — the team list *requires* a `policy_type` the global
+one does not accept, and only team policies carry `order` in the body.
+
+Policies apply in order and an alert policy with `continue_processing: false`
+stops the chain, so reordering one can silently disable every policy beneath it.
+A policy with no `filter` matches every alert. A notification policy with
+`suppress: true` means matching alerts page nobody while still appearing in the
+queue — the quietest thing configurable here, and the hardest to notice
+afterwards. All three are called out in the rendered output rather than left as
+fields to interpret.
+
 Enable them with `JSM_TOOLSETS=responder,schedules,teams`, or `JSM_TOOLSETS=admin` for
 on-call reads plus schedule and team configuration. They are separate from
 `responder` on purpose: editing a rotation or granting a role is not something a

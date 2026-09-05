@@ -69,10 +69,45 @@ for (const [path, methods] of Object.entries(spec.paths)) {
 const deref = (schema) =>
   schema?.$ref ? spec.components.schemas[schema.$ref.split("/").pop()] : schema;
 
-function requestBodySchema(operation) {
+/**
+ * The property names a request body accepts, and which of them are required.
+ *
+ * Bodies are not always a single object. The team policy endpoints declare a
+ * `oneOf` between an alert-policy and a notification-policy shape, and reading
+ * only `properties` reported those as having no request body at all — which
+ * would have waved through any field name a tool cared to send. A union
+ * contributes the union of its branches' properties, and a field is required
+ * only if EVERY branch requires it: one branch demanding it is not a demand the
+ * caller can always satisfy.
+ */
+function requestBodyFields(operation) {
   const content = operation.requestBody?.content;
-  if (!content) return undefined;
-  return deref(Object.values(content)[0]?.schema);
+  if (!content) return { properties: new Set(), required: new Set() };
+
+  const collect = (schema) => {
+    const resolved = deref(schema);
+    if (!resolved) return [];
+    const branches = resolved.oneOf ?? resolved.anyOf ?? resolved.allOf;
+    if (branches) return branches.flatMap(collect);
+    return [resolved];
+  };
+
+  const shapes = collect(Object.values(content)[0]?.schema);
+  const properties = new Set(shapes.flatMap((shape) => Object.keys(shape.properties ?? {})));
+
+  // allOf composes one object, so its branches' requirements all apply;
+  // oneOf/anyOf offer alternatives, so only a shared requirement is universal.
+  const composed = deref(Object.values(content)[0]?.schema)?.allOf !== undefined;
+  const requiredLists = shapes.map((shape) => new Set(shape.required ?? []));
+  const required = new Set(
+    shapes
+      .flatMap((shape) => shape.required ?? [])
+      .filter((name) =>
+        composed || shapes.length === 1 ? true : requiredLists.every((list) => list.has(name)),
+      ),
+  );
+
+  return { properties, required };
 }
 
 const declared = [];
@@ -130,8 +165,7 @@ for (const { tool, endpoint } of declared) {
     );
   }
 
-  const bodySchema = requestBodySchema(operation);
-  const specBody = new Set(Object.keys(bodySchema?.properties ?? {}));
+  const { properties: specBody, required: specRequired } = requestBodyFields(operation);
   const allowedBody = new Set(endpoint.allowUnknownBody ?? []);
 
   for (const name of endpoint.body ?? []) {
@@ -153,7 +187,7 @@ for (const { tool, endpoint } of declared) {
   // The assertion that catches shipping a create tool without its one required
   // field — the failure that would only ever surface as a 422 on a live tenant.
   const sent = new Set(endpoint.body ?? []);
-  for (const name of bodySchema?.required ?? []) {
+  for (const name of specRequired) {
     expect(
       sent.has(name),
       `${tool}: ${endpoint.method} ${endpoint.path} requires body field '${name}', ` +

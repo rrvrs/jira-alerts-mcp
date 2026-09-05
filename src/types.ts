@@ -398,3 +398,20 @@ export interface NotificationRuleStep {
   sendAfter?: number;
   contact?: { method?: string; to?: string };
 }
+
+/** An alert or notification policy: what happens to alerts before anyone sees them. */
+export interface Policy {
+  id?: string;
+  type?: string;
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+  order?: number;
+  teamId?: string;
+  filter?: Record<string, unknown>;
+  message?: string;
+  priorityValue?: string;
+  updatePriority?: boolean;
+  suppress?: boolean;
+  [key: string]: unknown;
+}

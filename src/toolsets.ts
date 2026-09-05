@@ -34,6 +34,7 @@ export const TOOLSETS = [
   "maintenance",
   "heartbeats",
   "routing",
+  "policies",
 ] as const;
 
 export type ToolsetName = (typeof TOOLSETS)[number];
@@ -88,6 +89,10 @@ export const TOOLSET_INFO: Record<ToolsetName, ToolsetInfo> = {
     summary: "Who gets notified: escalations, routing rules, forwarding rules, notification rules.",
     scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
   },
+  policies: {
+    summary: "Alert and notification policies: rewrite, delay or suppress alerts as they arrive.",
+    scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
+  },
 };
 
 /**
@@ -137,7 +142,7 @@ export const PROFILES = {
   // schedule mid-page is not a thing a responder should be one tool call away
   // from, and the write scopes are a different grant.
   admin: {
-    toolsets: ["oncall", "schedules", "teams", "maintenance", "heartbeats", "routing"],
+    toolsets: ["oncall", "schedules", "teams", "maintenance", "heartbeats", "routing", "policies"],
   },
   all: { toolsets: TOOLSETS },
 } as const satisfies Record<string, { toolsets: readonly ToolsetName[]; only?: readonly string[] }>;
