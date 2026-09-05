@@ -639,15 +639,24 @@ export function renderAsyncReceipt(
   // A create has no id yet — the receipt is all there is until the request
   // resolves — so say "a new alert" rather than printing an empty backtick pair.
   const target = subject.id ? `${subject.noun} \`${subject.id}\`` : `a new ${subject.noun}`;
+  // Not every async endpoint returns a request id: POST /v1/alerts/{id}/notes
+  // answers `{result: "queued"}` and nothing else, verified against a live
+  // tenant. Printing "Request id: not returned" and then telling the model to
+  // confirm "using the request id above" sends it to call
+  // jsm_get_request_status with the literal string "not returned".
+  const followUp = response.requestId
+    ? "Confirm with jsm_get_request_status using the request id above, or re-read the " +
+      `${subject.noun} after a moment.`
+    : `This endpoint returned no request id to poll, so re-read the ${subject.noun} after a ` +
+      "moment to confirm the change landed.";
   return [
     `${action} request accepted for ${target}.`,
     "",
-    `- **Request id**: \`${response.requestId ?? "not returned"}\``,
+    ...(response.requestId ? [`- **Request id**: \`${response.requestId}\``] : []),
     `- **Result**: ${response.result ?? "queued"}`,
     "",
     `JSM applies these actions asynchronously, so the ${subject.noun} may not reflect this change ` +
-      "immediately. Confirm with jsm_get_request_status using the request id above, or re-read the " +
-      `${subject.noun} after a moment.`,
+      `immediately. ${followUp}`,
   ].join("\n");
 }
 

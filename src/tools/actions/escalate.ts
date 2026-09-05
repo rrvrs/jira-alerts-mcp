@@ -12,10 +12,7 @@ export const escalateAlert = defineTool({
   endpoint: {
     method: "POST",
     path: "/v1/alerts/{id}/escalate",
-    body: ["escalationId", "user", "source", "note"],
-    // Only escalationId is declared. Opsgenie parity for the actor fields —
-    // see acknowledge.ts.
-    allowUnknownBody: ["user", "source", "note"],
+    body: ["escalationId"],
   },
   title: "Escalate a JSM alert through an escalation policy",
   description: `Push a JSM alert into an escalation policy immediately, rather than waiting for it to escalate on its own.
@@ -25,9 +22,6 @@ Use this when an alert is not getting picked up and waiting out the escalation t
 Args:
   - alert_id (string): the full alert id (not the tinyId)
   - escalation_id (string): id of the escalation policy to run
-  - note (string, optional): why it is being escalated
-  - user (string, optional): actor name/email; defaults to the credential owner
-  - source (string, optional): source label for the activity log
 
 Returns: { "requestId": string, "result": string, "alert_id": string }
 
@@ -53,8 +47,5 @@ Constraints and errors:
   handler: async (params, client) =>
     alertAction(client, "Escalate", params.alert_id, "escalate", {
       escalationId: params.escalation_id,
-      user: params.user,
-      source: params.source,
-      note: params.note,
     }),
 });

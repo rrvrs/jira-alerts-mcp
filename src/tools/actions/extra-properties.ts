@@ -16,10 +16,7 @@ export const addAlertExtraProperties = defineTool({
   endpoint: {
     method: "POST",
     path: "/v1/alerts/{id}/extra-properties",
-    body: ["extraProperties", "user", "source", "note"],
-    // Only extraProperties is declared; Opsgenie parity for the actor fields,
-    // as in acknowledge.ts.
-    allowUnknownBody: ["user", "source", "note"],
+    body: ["extraProperties"],
   },
   title: "Attach key/value properties to a JSM alert",
   description: `Attach arbitrary key/value context to a JSM alert, or overwrite properties already on it.
@@ -29,9 +26,6 @@ Extra properties are the structured half of an alert, next to the prose in its d
 Args:
   - alert_id (string): the full alert id (not the tinyId)
   - extra_properties (object): key/value pairs; values may be strings, numbers or booleans
-  - note (string, optional): note recorded with the change
-  - user (string, optional): actor name/email; defaults to the credential owner
-  - source (string, optional): source label for the activity log
 
 Returns: { "requestId": string, "result": string, "alert_id": string }
 
@@ -53,9 +47,6 @@ Examples:
   handler: async (params, client) =>
     alertAction(client, "Add extra properties", params.alert_id, "extra-properties", {
       extraProperties: params.extra_properties,
-      user: params.user,
-      source: params.source,
-      note: params.note,
     }),
 });
 
@@ -65,9 +56,7 @@ export const removeAlertExtraProperties = defineTool({
   endpoint: {
     method: "DELETE",
     path: "/v1/alerts/{id}/extra-properties",
-    body: ["keys", "user", "source", "note"],
-    // Only `keys` is declared; Opsgenie parity for the actor fields.
-    allowUnknownBody: ["user", "source", "note"],
+    body: ["keys"],
   },
   title: "Remove key/value properties from a JSM alert",
   description: `Remove properties from a JSM alert by key.
@@ -75,9 +64,6 @@ export const removeAlertExtraProperties = defineTool({
 Args:
   - alert_id (string): the full alert id (not the tinyId)
   - keys (string[]): the property keys to remove — keys, not values
-  - note (string, optional): note recorded with the change
-  - user (string, optional): actor name/email; defaults to the credential owner
-  - source (string, optional): source label for the activity log
 
 Returns: { "requestId": string, "result": string, "alert_id": string }
 
@@ -103,9 +89,6 @@ Constraints and errors:
       "extra-properties",
       {
         keys: params.keys,
-        user: params.user,
-        source: params.source,
-        note: params.note,
       },
       "DELETE",
     ),

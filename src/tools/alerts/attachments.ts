@@ -148,7 +148,12 @@ Constraints and errors:
         structured,
       );
     } catch (error) {
-      return fail(handleApiError(error, "get alert attachment"));
+      return fail(
+        handleApiError(error, "get alert attachment", {
+          method: "GET",
+          path: "/v1/alerts/{id}/attachments/{attachmentId}",
+        }),
+      );
     }
   },
 });

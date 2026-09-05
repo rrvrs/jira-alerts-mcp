@@ -12,10 +12,6 @@ export const closeAlert = defineTool({
   endpoint: {
     method: "POST",
     path: "/v1/alerts/{id}/close",
-    body: ["user", "source", "note"],
-    // No body declared in the spec — same Opsgenie-parity reasoning as
-    // acknowledge.ts, and the same thing to confirm on a tenant.
-    allowUnknownBody: ["user", "source", "note"],
   },
   title: "Close a JSM alert",
   description: `Close a JSM alert, marking it resolved and ending all notifications for it.
@@ -24,9 +20,6 @@ Closing is how an alert leaves the open queue. Treat it as effectively one-way: 
 
 Args:
   - alert_id (string): the full alert id (not the tinyId)
-  - note (string, optional): resolution note — strongly recommended
-  - user (string, optional): actor name/email; defaults to the credential owner
-  - source (string, optional): source label for the activity log
 
 Returns: { "requestId": string, "result": string, "alert_id": string }
 
@@ -44,10 +37,5 @@ Don't use when: the alert is still being worked — acknowledge instead.`,
     idempotentHint: true,
     openWorldHint: true,
   },
-  handler: async (params, client) =>
-    alertAction(client, "Close", params.alert_id, "close", {
-      user: params.user,
-      source: params.source,
-      note: params.note,
-    }),
+  handler: async (params, client) => alertAction(client, "Close", params.alert_id, "close"),
 });

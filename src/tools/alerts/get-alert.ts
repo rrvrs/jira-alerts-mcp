@@ -71,7 +71,7 @@ Error handling:
 
       return renderFormat(params.response_format, renderAlertDetail(alert, directory), { alert });
     } catch (error) {
-      return fail(handleApiError(error, "get alert"));
+      return fail(handleApiError(error, "get alert", { method: "GET", path: "/v1/alerts" }));
     }
   },
 });

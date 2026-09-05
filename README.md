@@ -191,7 +191,7 @@ without republishing:
 | `JSM_CLOUD_ID` | yes | Your Atlassian site's cloud id (a UUID) |
 | `JSM_EMAIL` + `JSM_API_TOKEN` | one of | [Create a token](https://id.atlassian.com/manage-profile/security/api-tokens) |
 | `JSM_OAUTH_TOKEN` | one of | OAuth 3LO bearer; takes precedence if set |
-| `JSM_TOOLSETS` | no | Which tool families to register — see [Choosing your toolsets](#choosing-your-toolsets). Unset registers `core` |
+| `JSM_TOOLSETS` | no | Which tool families to register — see [Choosing your toolsets](#choosing-your-toolsets). Unset registers `responder` |
 | `JSM_READ_ONLY` | no | `true` withholds every write tool |
 | `TRANSPORT` | no | `stdio` (default) or `http` |
 | `PORT` / `HOST` | no | HTTP transport; defaults to `127.0.0.1:3000` |
@@ -204,6 +204,36 @@ actionable message rather than on the first tool call.
 read `.env` itself — an MCP server is launched by its client, and the client owns
 the environment. Use the file as a checklist for your client's `env` block, or
 `set -a; source .env; set +a` for local development.
+
+### What your credentials can and cannot do
+
+Both auth methods are not equivalent, and the difference is not documented by
+Atlassian. Verified against a live tenant on 2026-09-05:
+
+**An Atlassian account API token (`JSM_EMAIL` + `JSM_API_TOKEN`) carries the read
+and write ops scopes, but not the delete ones.** Every DELETE-based tool answers
+`401 Unauthorized; scope does not match` — the credentials are valid, the grant
+is missing. That is five tools:
+
+`jsm_delete_alert` · `jsm_delete_alert_note` · `jsm_remove_alert_tags` ·
+`jsm_remove_alert_extra_properties` · `jsm_delete_alert_attachment`
+
+They need a 3LO or Forge OAuth token granted
+`delete:ops-alert:jira-service-management`, supplied as `JSM_OAUTH_TOKEN`. The
+401 handler says exactly this, so the model reports it rather than retrying.
+
+**The alert attachment endpoints reject API tokens outright**, and the API's own
+OpenAPI document maps them to no OAuth scope at all — so there is no grant to
+request. `jsm_list_alert_attachments` and `jsm_get_alert_attachment` are
+registered because they are real endpoints, but treat them as unavailable on
+token auth.
+
+**Some actions depend on your JSM plan, not on your scopes.** On a Standard
+tenant, snooze, assign and custom actions are accepted and then fail out of band
+with `Your account plan does not support …`. The request is well-formed; the
+plan is the limit. This is exactly why writes are asynchronous and why
+`jsm_get_request_status` matters — the immediate response to all three is a
+successful receipt.
 
 ### Choosing your toolsets
 
@@ -409,6 +439,17 @@ tool descriptions, where the model will actually read it:
 3. **The search window caps at 20,000.** `offset + limit` must stay under it.
    `jsm_list_alerts` rejects deeper paging locally with a message telling the
    model to narrow the query instead of burning a round trip on a guaranteed 400.
+
+4. **Alert actions take no actor or note.** Opsgenie accepted `user`, `source`
+   and `note` alongside an acknowledge or a close, and JSM Operations is an
+   Opsgenie rehost — but it declares no request body for those endpoints and
+   discards the fields silently. Acknowledging with a note and reading the
+   activity log back shows neither the note nor the actor. So these tools do not
+   offer the parameters at all: a rejected argument is a fact the model can act
+   on, where an ignored one looks like a recorded decision that has actually
+   vanished. To leave a durable note, call `jsm_add_alert_note`. `jsm_create_alert`
+   *does* take `note` and `source`, because `CreateAlertRequest` declares both
+   and the API honours them — also verified.
 
 ---
 

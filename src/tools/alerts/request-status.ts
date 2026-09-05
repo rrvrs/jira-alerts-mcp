@@ -64,7 +64,9 @@ Error handling:
 
       return renderFormat(params.response_format, markdown, { request: status });
     } catch (error) {
-      return fail(handleApiError(error, "get request status"));
+      return fail(
+        handleApiError(error, "get request status", { method: "GET", path: "/v1/alerts/requests" }),
+      );
     }
   },
 });

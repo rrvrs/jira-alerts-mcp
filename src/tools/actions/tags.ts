@@ -16,10 +16,7 @@ export const addAlertTags = defineTool({
   endpoint: {
     method: "POST",
     path: "/v1/alerts/{id}/tags",
-    body: ["tags", "user", "source", "note"],
-    // Only `tags` is declared; Opsgenie parity for the actor fields, as in
-    // acknowledge.ts.
-    allowUnknownBody: ["user", "source", "note"],
+    body: ["tags"],
   },
   title: "Add tags to a JSM alert",
   description: `Add one or more tags to a JSM alert. Tags are additive — existing ones stay.
@@ -29,9 +26,6 @@ Tags are how alerts get grouped and found later: jsm_list_alerts can filter on t
 Args:
   - alert_id (string): the full alert id (not the tinyId)
   - tags (string[]): one or more tag names
-  - note (string, optional): note recorded with the change
-  - user (string, optional): actor name/email; defaults to the credential owner
-  - source (string, optional): source label for the activity log
 
 Returns: { "requestId": string, "result": string, "alert_id": string }
 
@@ -52,9 +46,6 @@ Examples:
   handler: async (params, client) =>
     alertAction(client, "Add tags", params.alert_id, "tags", {
       tags: params.tags,
-      user: params.user,
-      source: params.source,
-      note: params.note,
     }),
 });
 
@@ -64,9 +55,7 @@ export const removeAlertTags = defineTool({
   endpoint: {
     method: "DELETE",
     path: "/v1/alerts/{id}/tags",
-    body: ["tags", "user", "source", "note"],
-    // Only `tags` is declared; Opsgenie parity for the actor fields.
-    allowUnknownBody: ["user", "source", "note"],
+    body: ["tags"],
   },
   title: "Remove tags from a JSM alert",
   description: `Remove one or more tags from a JSM alert.
@@ -74,9 +63,6 @@ export const removeAlertTags = defineTool({
 Args:
   - alert_id (string): the full alert id (not the tinyId)
   - tags (string[]): the tag names to remove
-  - note (string, optional): note recorded with the change
-  - user (string, optional): actor name/email; defaults to the credential owner
-  - source (string, optional): source label for the activity log
 
 Returns: { "requestId": string, "result": string, "alert_id": string }
 
@@ -102,9 +88,6 @@ Constraints and errors:
       "tags",
       {
         tags: params.tags,
-        user: params.user,
-        source: params.source,
-        note: params.note,
       },
       "DELETE",
     ),

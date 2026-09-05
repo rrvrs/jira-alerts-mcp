@@ -12,10 +12,6 @@ export const unacknowledgeAlert = defineTool({
   endpoint: {
     method: "POST",
     path: "/v1/alerts/{id}/unacknowledge",
-    body: ["user", "source", "note"],
-    // The spec declares no request body for this endpoint. Opsgenie parity —
-    // see acknowledge.ts for the same allowance and the same thing to confirm.
-    allowUnknownBody: ["user", "source", "note"],
   },
   title: "Take back an acknowledgement on a JSM alert",
   description: `Return an acknowledged JSM alert to unacknowledged, so escalation notifications resume.
@@ -24,9 +20,6 @@ Use this when someone acked an alert they cannot actually work — picked it up 
 
 Args:
   - alert_id (string): the full alert id (not the tinyId)
-  - note (string, optional): why the acknowledgement is being taken back
-  - user (string, optional): actor name/email; defaults to the credential owner
-  - source (string, optional): source label for the activity log
 
 Returns: { "requestId": string, "result": string, "alert_id": string }
 
@@ -48,9 +41,5 @@ Constraints and errors:
     openWorldHint: true,
   },
   handler: async (params, client) =>
-    alertAction(client, "Unacknowledge", params.alert_id, "unacknowledge", {
-      user: params.user,
-      source: params.source,
-      note: params.note,
-    }),
+    alertAction(client, "Unacknowledge", params.alert_id, "unacknowledge"),
 });

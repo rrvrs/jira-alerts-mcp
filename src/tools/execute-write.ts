@@ -94,6 +94,6 @@ export async function executeWrite<T>(
       },
     );
   } catch (error) {
-    return fail(handleApiError(error, label.toLowerCase()));
+    return fail(handleApiError(error, label.toLowerCase(), { method, path }));
   }
 }

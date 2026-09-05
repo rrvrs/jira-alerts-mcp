@@ -159,10 +159,92 @@ export class JsmClient {
 }
 
 /**
+ * What was being called, so an auth failure can name the scope that endpoint
+ * actually needs instead of reciting the same alert-shaped advice everywhere.
+ */
+export interface ErrorHints {
+  method?: string | undefined;
+  /** Path below the cloud-id root, e.g. "/v1/alerts/{id}/tags". */
+  path?: string | undefined;
+}
+
+/** The scope family an ops path belongs to. */
+function scopeFamily(path: string): "ops-alert" | "ops-config" | "stakeholder-comms" {
+  // Order matters: /v1/alerts/policies is configuration, not an alert, and
+  // sits under the alerts prefix.
+  if (path.startsWith("/v1/alerts/policies")) return "ops-config";
+  if (path.startsWith("/v1/alerts")) return "ops-alert";
+  if (path.startsWith("/v1/status-pages") || path.startsWith("/v1/stakeholder")) {
+    return "stakeholder-comms";
+  }
+  return "ops-config";
+}
+
+/**
+ * Names the scope the called endpoint needs, and the caveats that are true of
+ * it. Everything asserted here was checked against a live tenant on 2026-09-05
+ * — see the notes in each branch.
+ */
+function scopeAdvice(hints: ErrorHints | undefined): string {
+  if (!hints?.path) {
+    return (
+      "Alerts need read:ops-alert:jira-service-management; schedules, teams and other " +
+      "configuration need read:ops-config:jira-service-management, which is a separate grant. " +
+      "Write endpoints need the matching write: scope alongside the read one."
+    );
+  }
+
+  const { path, method } = hints;
+
+  // The four attachment endpoints are the one genuine dead end: they refuse
+  // API-token auth at the gateway, and the OpenAPI spec maps them to no OAuth
+  // scope at all, so there is no grant to go and ask for.
+  if (path.includes("/attachments")) {
+    return (
+      "The alert attachment endpoints reject Atlassian account API tokens outright (verified " +
+      "against a live tenant), and the API's own OpenAPI document declares no OAuth scope for " +
+      "them, so there is no scope to request. Treat attachments as unavailable on " +
+      "JSM_EMAIL + JSM_API_TOKEN auth; report that to the user rather than retrying."
+    );
+  }
+
+  const family = scopeFamily(path);
+  const verb = method === "DELETE" ? "delete" : method && method !== "GET" ? "write" : "read";
+  const needed =
+    verb === "read"
+      ? `read:${family}:jira-service-management`
+      : `read:${family}:jira-service-management and ${verb}:${family}:jira-service-management`;
+
+  if (verb === "delete") {
+    return (
+      `This endpoint needs ${needed}. Atlassian account API tokens carry the read and write ops ` +
+      "scopes but NOT the delete ones (verified against a live tenant), so every DELETE-based " +
+      "tool here fails this way on JSM_EMAIL + JSM_API_TOKEN. Use a 3LO or Forge OAuth token " +
+      "granted the delete scope, via JSM_OAUTH_TOKEN. Do not retry with the same credentials."
+    );
+  }
+
+  return (
+    `This endpoint needs ${needed}. ` +
+    (family === "ops-config"
+      ? "read:ops-config:jira-service-management is a separate grant from the alert scopes: if " +
+        "jsm_list_alerts works and only this call fails, the credentials are fine and the config " +
+        "scope is what is missing."
+      : "Atlassian requires the read scope alongside the write one, not the write scope alone.")
+  );
+}
+
+/**
  * Converts any thrown error into a message that tells the agent what to do
  * next, not just what went wrong.
+ *
+ * `hints` carries the method and path so the scope advice can be specific.
+ * Without it the advice stays generic rather than guessing — an earlier version
+ * hardcoded alert-shaped advice into every 401, 403 and 404, which meant a
+ * failing attachment read was answered with a lecture about on-call schedules
+ * and an instruction to check working credentials.
  */
-export function handleApiError(error: unknown, context: string): string {
+export function handleApiError(error: unknown, context: string, hints?: ErrorHints): string {
   if (error instanceof JsmConfigError) {
     return `Configuration error: ${error.message}`;
   }
@@ -182,33 +264,45 @@ export function handleApiError(error: unknown, context: string): string {
             `(e.g. status:open, priority:P1, tag:"db"). Field names are case-sensitive.`
           );
         // A missing scope surfaces here as 401, not 403, so this message must not
-        // send the reader off to rotate a credential that is working fine.
-        case 401:
+        // send the reader off to rotate a credential that is working fine. The
+        // API distinguishes the two itself: "scope does not match" is a scope
+        // problem and the credentials are good.
+        case 401: {
+          const scopeProblem = /scope does not match/i.test(data?.message ?? "");
+          if (scopeProblem) {
+            return (
+              `Error (${context}): the credentials are valid but are not granted what this ` +
+              `endpoint requires.${detail} ${scopeAdvice(hints)}`
+            );
+          }
           return (
             `Error (${context}): authentication failed.${detail} ` +
             `Either the credentials are wrong or revoked — check JSM_EMAIL/JSM_API_TOKEN (or ` +
-            `JSM_OAUTH_TOKEN) — or the token lacks the scope for this endpoint. Schedules and ` +
-            `on-call need read:ops-config:jira-service-management, a separate grant from ` +
-            `read:ops-alert:jira-service-management. To tell the two apart in one call: if ` +
-            `jsm_list_alerts succeeds and only schedule or on-call calls fail, the credentials are ` +
-            `fine and read:ops-config:jira-service-management is what is missing.`
+            `JSM_OAUTH_TOKEN) — or the token lacks the scope for this endpoint. ` +
+            `${scopeAdvice(hints)}`
           );
+        }
         case 403:
           return (
             `Error (${context}): permission denied.${detail} ` +
             `The account needs Jira Service Management Operations access on the relevant team, plus ` +
-            `the scope for this endpoint: read:ops-alert:jira-service-management for alerts, ` +
-            `read:ops-config:jira-service-management for schedules and on-call, and both ` +
-            `read:ops-alert:jira-service-management and write:ops-alert:jira-service-management for ` +
-            `write actions — Atlassian requires the read scope alongside the write one. ` +
+            `the scope for this endpoint. ${scopeAdvice(hints)} ` +
             `Read-only Jira scopes are not sufficient.`
           );
-        case 404:
+        case 404: {
+          // The tinyId advice is true of alert endpoints and misleading
+          // everywhere else, so it is now conditional on the path.
+          const alertShaped = !hints?.path || scopeFamily(hints.path) === "ops-alert";
           return (
             `Error (${context}): not found.${detail} ` +
-            `Note that alert endpoints accept the full alert id (a UUID with a timestamp suffix), NOT the ` +
-            `short tinyId. To look up by alias, use jsm_get_alert with identifier_type='alias'.`
+            (alertShaped
+              ? `Note that alert endpoints accept the full alert id (a UUID with a timestamp ` +
+                `suffix), NOT the short tinyId. To look up by alias, use jsm_get_alert with ` +
+                `identifier_type='alias'.`
+              : `Check the id against the corresponding list tool — ids are not interchangeable ` +
+                `between resource types.`)
           );
+        }
         case 422:
           return `Error (${context}): the request was well-formed but could not be processed.${detail}`;
         case 429:

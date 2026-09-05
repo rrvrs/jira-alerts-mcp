@@ -215,24 +215,69 @@ describe("handleApiError", () => {
     assert.match(message, /status:open/);
   });
 
-  it("offers both causes on a 401, not just the credentials", () => {
+  it("offers both causes on a 401 when it has no endpoint to go on", () => {
     // A missing ops-config scope arrives as 401. Blaming the credentials alone
     // sends the reader to rotate a token that was working — the exact
     // misdiagnosis this message exists to prevent.
     const message = handleApiError(httpError(401), "ctx");
     assert.match(message, /JSM_EMAIL\/JSM_API_TOKEN/);
     assert.match(message, /read:ops-config:jira-service-management/);
-    assert.match(message, /jsm_list_alerts succeeds and only schedule or on-call calls fail/);
+    assert.match(message, /read:ops-alert:jira-service-management/);
+  });
+
+  it("says the credentials are fine when the API says the scope is not", () => {
+    // JSM answers a missing scope with 401 "scope does not match". Telling the
+    // reader to check their credentials there is a wrong answer: they are
+    // valid. Verified against a live tenant — a working API token gets exactly
+    // this on every delete endpoint.
+    const message = handleApiError(httpError(401, "Unauthorized; scope does not match"), "ctx", {
+      method: "DELETE",
+      path: "/v1/alerts/{id}/tags",
+    });
+    assert.match(message, /credentials are valid/);
+    assert.doesNotMatch(message, /wrong or revoked/);
+  });
+
+  it("names the delete scope, and that API tokens do not carry it", () => {
+    // The finding this branch exists for: an Atlassian account API token has
+    // the read and write ops scopes but never the delete ones, so every
+    // DELETE-based tool fails until the user switches to OAuth. Without this
+    // the model retries the same call.
+    const message = handleApiError(httpError(401, "Unauthorized; scope does not match"), "ctx", {
+      method: "DELETE",
+      path: "/v1/alerts/{id}",
+    });
+    assert.match(message, /delete:ops-alert:jira-service-management/);
+    assert.match(message, /JSM_OAUTH_TOKEN/);
+    assert.match(message, /Do not retry with the same credentials/);
+  });
+
+  it("says attachments are a dead end rather than naming a scope to request", () => {
+    const message = handleApiError(httpError(401, "Unauthorized; scope does not match"), "ctx", {
+      method: "GET",
+      path: "/v1/alerts/{id}/attachments",
+    });
+    assert.match(message, /no OAuth scope for them/);
+    assert.match(message, /unavailable/);
+  });
+
+  it("treats alert policies as configuration, not as alerts", () => {
+    // /v1/alerts/policies sits under the alerts prefix but is ops-config.
+    const message = handleApiError(httpError(403), "ctx", {
+      method: "GET",
+      path: "/v1/alerts/policies",
+    });
+    assert.match(message, /read:ops-config:jira-service-management/);
+    assert.doesNotMatch(message, /read:ops-alert:jira-service-management/);
   });
 
   it("names the scope for each endpoint group on a 403", () => {
     const message = handleApiError(httpError(403), "ctx");
     assert.match(message, /read:ops-alert:jira-service-management/);
     assert.match(message, /read:ops-config:jira-service-management/);
-    assert.match(message, /write:ops-alert:jira-service-management/);
     // Writes need the read scope alongside the write one; saying only "write"
     // is what let a write-scope-only token look sufficient.
-    assert.match(message, /requires the read scope alongside the write one/);
+    assert.match(message, /matching write: scope alongside the read one/);
     assert.match(message, /Read-only Jira scopes are not sufficient/);
   });
 
@@ -241,6 +286,15 @@ describe("handleApiError", () => {
     const message = handleApiError(httpError(404), "ctx");
     assert.match(message, /NOT the\s+short tinyId/);
     assert.match(message, /identifier_type='alias'/);
+  });
+
+  it("does not lecture about tinyId when the call was not alert-shaped", () => {
+    const message = handleApiError(httpError(404), "ctx", {
+      method: "GET",
+      path: "/v1/schedules/{id}",
+    });
+    assert.doesNotMatch(message, /tinyId/);
+    assert.match(message, /ids are not interchangeable/);
   });
 
   it("tells the caller to back off on a 429", () => {
