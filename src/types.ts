@@ -265,3 +265,25 @@ export interface PaginationMeta {
   truncated?: boolean;
   total?: number;
 }
+
+/** A rotation within an on-call schedule. */
+export interface Rotation {
+  id?: string;
+  name?: string;
+  startDate?: string;
+  endDate?: string;
+  /** "daily" | "weekly" | "hourly". */
+  type?: string;
+  length?: number;
+  participants?: Array<{ id?: string; type?: string }>;
+  timeRestriction?: unknown;
+}
+
+/** A one-off cover for someone else's shift. Addressed by alias, not by id. */
+export interface ScheduleOverride {
+  alias?: string;
+  responder?: { id?: string; type?: string };
+  startDate?: string;
+  endDate?: string;
+  rotationIds?: string[];
+}

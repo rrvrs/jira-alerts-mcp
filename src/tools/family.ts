@@ -42,12 +42,44 @@ import { executeWrite } from "./execute-write.js";
 import type { PagingDialect } from "./paging.js";
 import type { ToolGroup } from "../toolsets.js";
 
+/** A path parameter belonging to a resource above this one. */
+export interface ParentParam {
+  /** Input parameter name the model supplies, e.g. "schedule_id". */
+  param: string;
+  /** The brace token in `path`, matching the spec, e.g. "scheduleId". */
+  token: string;
+  /** How it is described to the model. Required: an id's format is a fact. */
+  field: z.ZodType;
+}
+
 /** What every operation in a family shares. */
 export interface ResourceConfig {
   /** Toolset all of this family's tools belong to. */
   toolset: ToolGroup;
-  /** Collection path below the cloud-id root, e.g. "/v1/schedules". */
+  /**
+   * Collection path below the cloud-id root, in the spec's own brace form:
+   * "/v1/schedules", or "/v1/schedules/{scheduleId}/rotations" for a nested
+   * resource. Every brace token must be named in `parents`.
+   */
   path: string;
+  /**
+   * Path parameters above this resource. A rotation lives under a schedule, so
+   * every rotation tool needs the schedule id too — as an input parameter, in
+   * the path, and in the manifest. Declared once here rather than in each of
+   * the five operations.
+   */
+  parents?: readonly ParentParam[];
+  /**
+   * The spec's name for this resource's own path parameter. Almost always
+   * "id" — but a schedule override is addressed by "alias", and the manifest
+   * has to match the spec exactly or the drift guard rejects it.
+   */
+  itemToken?: string;
+  /**
+   * Which verb updates one item. PATCH for most of the API; overrides take PUT,
+   * and sending the wrong one is a 405 rather than a silent no-op.
+   */
+  updateMethod?: "PATCH" | "PUT";
   /** Singular noun for receipts and messages, e.g. "schedule". */
   noun: string;
   /** Key the items sit under in structuredContent, e.g. "schedules". */
@@ -99,8 +131,15 @@ export interface ListOp<T, Ctx = undefined> extends CommonOp {
   item?: z.ZodRawShape;
 }
 
-export interface GetOp<T> extends CommonOp {
-  render: (item: T) => string;
+export interface GetOp<T, Ctx = undefined> extends CommonOp {
+  /** Never generated. */
+  render: (item: T, context: Ctx) => string;
+  /**
+   * Fetched once and handed to `render`, as on a list. Without this a get and
+   * its sibling list disagree: jsm_list_schedules resolves the owning team to a
+   * name and jsm_get_schedule would print the bare UUID, from the same data.
+   */
+  prepare?: (client: JsmClient) => Promise<Ctx>;
 }
 
 export interface WriteOp<T> extends CommonOp {
@@ -119,14 +158,28 @@ export interface RemoveOp extends CommonOp {}
 
 const passthroughItem = z.object({}).passthrough();
 
+/** Substitutes the parent ids into the collection path. */
+function collectionPath(config: ResourceConfig, params: Record<string, unknown>): string {
+  let path = config.path;
+  for (const parent of config.parents ?? []) {
+    path = path.replace(`{${parent.token}}`, encodeURIComponent(String(params[parent.param])));
+  }
+  return path;
+}
+
 /** `/v1/schedules` + "sched 1" -> `/v1/schedules/sched%201`. */
-function itemPath(config: ResourceConfig, id: string): string {
-  return `${config.path}/${encodeURIComponent(id)}`;
+function itemPath(config: ResourceConfig, params: Record<string, unknown>, id: string): string {
+  return `${collectionPath(config, params)}/${encodeURIComponent(id)}`;
 }
 
 /** The manifest path uses the spec's brace form, not a real id. */
 function itemManifestPath(config: ResourceConfig): string {
-  return `${config.path}/{id}`;
+  return `${config.path}/{${config.itemToken ?? "id"}}`;
+}
+
+/** Parent ids are inputs on every operation in a nested family. */
+function parentShape(config: ResourceConfig): z.ZodRawShape {
+  return Object.fromEntries((config.parents ?? []).map((p) => [p.param, p.field]));
 }
 
 export function defineListOperation<T, Ctx = undefined>(
@@ -147,6 +200,7 @@ export function defineListOperation<T, Ctx = undefined>(
     title: op.title,
     description: op.description,
     inputSchema: {
+      ...parentShape(config),
       ...(op.query ?? {}),
       limit: limitField,
       offset: offsetField,
@@ -170,7 +224,7 @@ export function defineListOperation<T, Ctx = undefined>(
 
       return executeList<T>({
         client,
-        path: config.path,
+        path: collectionPath(config, typed),
         params: { offset: typed.offset, ...(op.toParams ? op.toParams(typed) : {}) },
         key: config.plural,
         context: `list ${config.plural}`,
@@ -187,7 +241,10 @@ export function defineListOperation<T, Ctx = undefined>(
   });
 }
 
-export function defineGetOperation<T>(config: ResourceConfig, op: GetOp<T>): AnyToolDefinition {
+export function defineGetOperation<T, Ctx = undefined>(
+  config: ResourceConfig,
+  op: GetOp<T, Ctx>,
+): AnyToolDefinition {
   return defineTool({
     name: op.name,
     toolset: config.toolset,
@@ -195,6 +252,7 @@ export function defineGetOperation<T>(config: ResourceConfig, op: GetOp<T>): Any
     title: op.title,
     description: op.description,
     inputSchema: {
+      ...parentShape(config),
       [config.idParam]: config.idField,
       response_format: responseFormatField,
     },
@@ -204,8 +262,9 @@ export function defineGetOperation<T>(config: ResourceConfig, op: GetOp<T>): Any
       const typed = params as Record<string, unknown>;
       const id = String(typed[config.idParam]);
       try {
-        const item = await client.getOne<T>(itemPath(config, id));
-        return ok(op.render(item), { [config.noun]: item as Record<string, unknown> });
+        const context = (op.prepare ? await op.prepare(client) : undefined) as Ctx;
+        const item = await client.getOne<T>(itemPath(config, typed, id));
+        return ok(op.render(item, context), { [config.noun]: item as Record<string, unknown> });
       } catch (error) {
         return fail(
           handleApiError(error, `get ${config.noun}`, {
@@ -228,14 +287,14 @@ export function defineCreateOperation<T>(
     endpoint: { method: "POST", path: config.path, body: op.bodyFields },
     title: op.title,
     description: op.description,
-    inputSchema: op.input,
+    inputSchema: { ...parentShape(config), ...op.input },
     outputSchema: op.output ?? { [config.noun]: passthroughItem },
     annotations: ANNOTATIONS.create,
     handler: async (params, client) =>
       executeWrite<T>(client, {
         label: `Create ${config.noun}`,
         method: "POST",
-        path: config.path,
+        path: collectionPath(config, params as Record<string, unknown>),
         body: op.toBody(params as Record<string, unknown>),
         // Configuration writes answer with the object, not a receipt. Reporting
         // them as async would point the model at a request id that was never
@@ -255,10 +314,14 @@ export function defineUpdateOperation<T>(
   return defineTool({
     name: op.name,
     toolset: config.toolset,
-    endpoint: { method: "PATCH", path: itemManifestPath(config), body: op.bodyFields },
+    endpoint: {
+      method: config.updateMethod ?? "PATCH",
+      path: itemManifestPath(config),
+      body: op.bodyFields,
+    },
     title: op.title,
     description: op.description,
-    inputSchema: { [config.idParam]: config.idField, ...op.input },
+    inputSchema: { ...parentShape(config), [config.idParam]: config.idField, ...op.input },
     outputSchema: op.output ?? { [config.noun]: passthroughItem },
     annotations: ANNOTATIONS.update,
     handler: async (params, client) => {
@@ -266,8 +329,8 @@ export function defineUpdateOperation<T>(
       const id = String(typed[config.idParam]);
       return executeWrite<T>(client, {
         label: `Update ${config.noun}`,
-        method: "PATCH",
-        path: itemPath(config, id),
+        method: config.updateMethod ?? "PATCH",
+        path: itemPath(config, typed, id),
         body: op.toBody(typed),
         mode: "sync",
         subject: { key: config.idParam, value: id, noun: config.noun },
@@ -285,7 +348,7 @@ export function defineRemoveOperation(config: ResourceConfig, op: RemoveOp): Any
     endpoint: { method: "DELETE", path: itemManifestPath(config) },
     title: op.title,
     description: op.description,
-    inputSchema: { [config.idParam]: config.idField },
+    inputSchema: { ...parentShape(config), [config.idParam]: config.idField },
     outputSchema: { deleted: z.boolean(), [config.idParam]: z.string().optional() },
     annotations: ANNOTATIONS.remove,
     handler: async (params, client) => {
@@ -294,7 +357,7 @@ export function defineRemoveOperation(config: ResourceConfig, op: RemoveOp): Any
       return executeWrite(client, {
         label: `Delete ${config.noun}`,
         method: "DELETE",
-        path: itemPath(config, id),
+        path: itemPath(config, typed, id),
         mode: "deleted",
         subject: { key: config.idParam, value: id, noun: config.noun },
       });
@@ -310,7 +373,7 @@ export function defineRemoveOperation(config: ResourceConfig, op: RemoveOp): Any
  */
 export interface FamilyOperations<T, Ctx = undefined> {
   list?: ListOp<T, Ctx>;
-  get?: GetOp<T>;
+  get?: GetOp<T, Ctx>;
   create?: WriteOp<T>;
   update?: WriteOp<T>;
   remove?: RemoveOp;
@@ -322,7 +385,7 @@ export function defineResourceFamily<T, Ctx = undefined>(
 ): AnyToolDefinition[] {
   const tools: AnyToolDefinition[] = [];
   if (ops.list) tools.push(defineListOperation<T, Ctx>(config, ops.list));
-  if (ops.get) tools.push(defineGetOperation<T>(config, ops.get));
+  if (ops.get) tools.push(defineGetOperation<T, Ctx>(config, ops.get));
   if (ops.create) tools.push(defineCreateOperation<T>(config, ops.create));
   if (ops.update) tools.push(defineUpdateOperation<T>(config, ops.update));
   if (ops.remove) tools.push(defineRemoveOperation(config, ops.remove));

@@ -25,7 +25,7 @@
 import type { AnyToolDefinition } from "./tools/define.js";
 
 /** Every toolset that ships tools today. */
-export const TOOLSETS = ["alerts", "alert-actions", "oncall"] as const;
+export const TOOLSETS = ["alerts", "alert-actions", "oncall", "schedules"] as const;
 
 export type ToolsetName = (typeof TOOLSETS)[number];
 
@@ -58,6 +58,10 @@ export const TOOLSET_INFO: Record<ToolsetName, ToolsetInfo> = {
   oncall: {
     summary: "On-call: schedule discovery, who is on call now and next, shift timelines.",
     scopes: ["read:ops-config:jira-service-management"],
+  },
+  schedules: {
+    summary: "Schedule configuration: schedules, rotations and overrides — create, edit, delete.",
+    scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
   },
 };
 
@@ -103,6 +107,11 @@ export const CORE_TOOL_NAMES = [
 export const PROFILES = {
   responder: { toolsets: ["alerts", "alert-actions", "oncall"] },
   core: { toolsets: ["alerts", "alert-actions", "oncall"], only: CORE_TOOL_NAMES },
+  // Configuration families, for someone setting up rotations rather than
+  // working an incident. Deliberately separate from `responder`: editing a
+  // schedule mid-page is not a thing a responder should be one tool call away
+  // from, and the write scopes are a different grant.
+  admin: { toolsets: ["oncall", "schedules"] },
   all: { toolsets: TOOLSETS },
 } as const satisfies Record<string, { toolsets: readonly ToolsetName[]; only?: readonly string[] }>;
 

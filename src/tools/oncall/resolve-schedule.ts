@@ -9,6 +9,7 @@
  */
 
 import type { JsmClient } from "../../services/client.js";
+import { createNameCache } from "../../services/name-cache.js";
 import type { Paged, Schedule } from "../../types.js";
 
 export interface ResolvedSchedule {
@@ -22,9 +23,10 @@ export class ScheduleLookupError extends Error {}
 
 /**
  * Process-wide name -> id cache. The mapping is stable, and during an incident
- * the same schedule gets asked about repeatedly.
+ * the same schedule gets asked about repeatedly. Created through the registry
+ * so clearAllNameCaches() reaches it — see services/name-cache.ts.
  */
-const cache = new Map<string, ResolvedSchedule>();
+const cache = createNameCache<ResolvedSchedule>();
 
 /** Exposed for tests, so one case's cached schedule cannot answer the next. */
 export function clearScheduleCache(): void {

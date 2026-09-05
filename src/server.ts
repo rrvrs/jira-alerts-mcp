@@ -18,6 +18,7 @@ import { registerTools } from "./tools/define.js";
 import { alertReadTools } from "./tools/alerts/index.js";
 import { alertActionTools } from "./tools/actions/index.js";
 import { onCallTools } from "./tools/oncall/index.js";
+import { scheduleConfigTools } from "./tools/schedules/index.js";
 
 /**
  * Every tool this server knows how to register, in catalogue order.
@@ -30,6 +31,7 @@ export const allTools: AnyToolDefinition[] = [
   ...alertReadTools,
   ...alertActionTools,
   ...onCallTools,
+  ...scheduleConfigTools,
 ];
 
 /**

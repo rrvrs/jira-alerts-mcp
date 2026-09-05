@@ -11,7 +11,13 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 
 import { allTools, buildServer } from "./server.js";
-import { CORE_TOOL_NAMES, resolveSelection, ToolsetSelectionError, TOOLSETS } from "./toolsets.js";
+import {
+  CORE_TOOL_NAMES,
+  PROFILES,
+  resolveSelection,
+  ToolsetSelectionError,
+  TOOLSETS,
+} from "./toolsets.js";
 import { callTool, stubClient, textOf } from "./tools/test-support.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -30,10 +36,30 @@ async function connectServer(client: JsmClient, selection: Selection): Promise<C
 }
 
 describe("resolveSelection", () => {
-  it("defaults to the whole responder surface", () => {
+  it("defaults to the whole responder surface, and no further", () => {
+    // The frozen default. `responder` is the alert-and-on-call surface, which
+    // is what someone installing an alerts server is asking for — it is NOT
+    // "every toolset that exists", and must not quietly become that as
+    // configuration families land. A change here is a change to every existing
+    // install's tool list and auto-approval surface, so it should be hard to
+    // make by accident.
     const selection = resolveSelection(allTools);
 
     assert.deepEqual(selection.requested, ["responder"]);
+    assert.deepEqual(selection.toolsets, [...PROFILES.responder.toolsets]);
+    assert.deepEqual(
+      names(selection),
+      allTools
+        .filter((tool) => (PROFILES.responder.toolsets as readonly string[]).includes(tool.toolset))
+        .map((tool) => tool.name),
+    );
+    // Configuration families are not in it.
+    assert.ok(!names(selection).includes("jsm_create_schedule"));
+  });
+
+  it("registers every toolset under `all`", () => {
+    const selection = resolveSelection(allTools, { env: { JSM_TOOLSETS: "all" } });
+
     assert.deepEqual(selection.toolsets, [...TOOLSETS]);
     assert.deepEqual(
       names(selection),
@@ -265,7 +291,7 @@ describe("jsm_list_capabilities", () => {
       toolsets: Array<{ name: string; enabled: boolean; scopes: string[]; tool_count: number }>;
     };
 
-    assert.equal(payload.tool_count, allTools.length);
+    assert.equal(payload.tool_count, selection.tools.length);
     assert.equal(payload.read_only, false);
     assert.deepEqual(
       payload.toolsets.map((entry) => entry.name),

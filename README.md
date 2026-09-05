@@ -390,7 +390,31 @@ still unacknowledged, and acknowledges it again.
 | `jsm_get_schedule_timeline` | `GET /v1/schedules/{id}/timeline` | read |
 | `jsm_list_capabilities` | — (answers from configuration) | read |
 
-All of these are registered by default. Narrow the surface with `JSM_TOOLSETS`
+Schedule configuration — the `schedules` toolset, **not** registered by default:
+
+| Tool | Endpoint | Read/Write |
+|---|---|---|
+| `jsm_get_schedule` | `GET /v1/schedules/{id}` | read |
+| `jsm_create_schedule` | `POST /v1/schedules` | write |
+| `jsm_update_schedule` | `PATCH /v1/schedules/{id}` | **destructive** |
+| `jsm_delete_schedule` | `DELETE /v1/schedules/{id}` | **destructive** |
+| `jsm_list_rotations` | `GET /v1/schedules/{id}/rotations` | read |
+| `jsm_get_rotation` | `GET /v1/schedules/{id}/rotations/{id}` | read |
+| `jsm_create_rotation` | `POST /v1/schedules/{id}/rotations` | write |
+| `jsm_update_rotation` | `PATCH /v1/schedules/{id}/rotations/{id}` | **destructive** |
+| `jsm_delete_rotation` | `DELETE /v1/schedules/{id}/rotations/{id}` | **destructive** |
+| `jsm_list_overrides` | `GET /v1/schedules/{id}/overrides` | read |
+| `jsm_get_override` | `GET /v1/schedules/{id}/overrides/{alias}` | read |
+| `jsm_create_override` | `POST /v1/schedules/{id}/overrides` | write |
+| `jsm_update_override` | `PUT /v1/schedules/{id}/overrides/{alias}` | **destructive** |
+| `jsm_delete_override` | `DELETE /v1/schedules/{id}/overrides/{alias}` | **destructive** |
+
+Enable them with `JSM_TOOLSETS=responder,schedules`, or `JSM_TOOLSETS=admin` for
+on-call reads plus schedule configuration. They are separate from `responder` on
+purpose: editing a rotation is not something a responder working an incident
+should be one tool call away from, and the write scopes are a different grant.
+
+The alert and on-call tables above are registered by default. Narrow the surface with `JSM_TOOLSETS`
 or `JSM_READ_ONLY` — see [Choosing your toolsets](#choosing-your-toolsets).
 
 `jsm_create_alert` pages people. A created alert enters the team's routing and
