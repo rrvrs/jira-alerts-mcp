@@ -9,7 +9,8 @@ import { fail, renderAlertLine } from "../../services/format.js";
 import type { Alert } from "../../types.js";
 import { defineTool } from "../define.js";
 import { executeList } from "../list-executor.js";
-import { alertOutputShape, listAlertsShape, paginationOutputShape } from "./shapes.js";
+import { paginationOutputShape } from "../../schemas/common.js";
+import { alertOutputShape, listAlertsShape } from "./shapes.js";
 
 export const listAlerts = defineTool({
   name: "jsm_list_alerts",

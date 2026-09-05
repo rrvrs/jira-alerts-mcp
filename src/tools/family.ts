@@ -1,0 +1,330 @@
+/**
+ * A factory for the mechanical half of a resource family.
+ *
+ * Ten configuration families follow the same five shapes — list, get, create,
+ * update, delete — and writing them out by hand would be a hundred files whose
+ * differences are three lines each. What repeats is genuinely mechanical: path
+ * interpolation, input-shape assembly, which executor to call, the pagination
+ * output block, the endpoint manifest entry, and the annotation vector.
+ *
+ * WHAT THIS DELIBERATELY DOES NOT GENERATE: `description`, and a list's
+ * `render` and `emptyMessage`. They are required, non-defaultable fields on
+ * every operation, so a family that skips them does not compile. This is the
+ * point of the whole file. A default renderer would emit JSON-shaped markdown
+ * and a default description would emit the OpenAPI summary — and the
+ * descriptions are the product here, because they carry what the spec does not
+ * say: that writes are asynchronous, that tinyId is not an id, that API tokens
+ * cannot delete. Generating prose is how that knowledge quietly stops being
+ * written. Making it structurally mandatory is cheaper than a convention
+ * everyone agrees with and nobody enforces.
+ *
+ * The escape hatch is that none of this is privileged: any operation can be
+ * omitted here and hand-written as a plain `defineTool` in the same directory.
+ * Heartbeats (identified by a query parameter rather than a path id) and the
+ * policy enable/disable endpoints are expected to need exactly that. Chasing
+ * the last awkward 30% would turn a factory into a DSL.
+ */
+
+import { z } from "zod";
+
+import { handleApiError, type JsmClient } from "../services/client.js";
+import { fail, ok } from "../services/format.js";
+import {
+  paginationOutputShape,
+  limitField,
+  offsetField,
+  responseFormatField,
+  type ResponseFormat,
+} from "../schemas/common.js";
+import { type AnyToolDefinition, defineTool, type EndpointDeclaration } from "./define.js";
+import { executeList } from "./list-executor.js";
+import { executeWrite } from "./execute-write.js";
+import type { PagingDialect } from "./paging.js";
+import type { ToolGroup } from "../toolsets.js";
+
+/** What every operation in a family shares. */
+export interface ResourceConfig {
+  /** Toolset all of this family's tools belong to. */
+  toolset: ToolGroup;
+  /** Collection path below the cloud-id root, e.g. "/v1/schedules". */
+  path: string;
+  /** Singular noun for receipts and messages, e.g. "schedule". */
+  noun: string;
+  /** Key the items sit under in structuredContent, e.g. "schedules". */
+  plural: string;
+  /** Input parameter naming one item, e.g. "schedule_id". */
+  idParam: string;
+  /** How that id is described to the model. Required: an id's format is a fact. */
+  idField: z.ZodType;
+  /** How the list endpoint pages. Defaults to size+offset. */
+  paging?: PagingDialect;
+  /** Envelope key, for endpoints answering under neither `data` nor `values`. */
+  itemsKey?: string | undefined;
+}
+
+/** Annotations by operation kind, so `destructiveHint` cannot be forgotten. */
+const ANNOTATIONS = {
+  read: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  create: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  // An update overwrites what was there, and a delete needs no argument.
+  update: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
+  remove: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
+} as const;
+
+interface CommonOp {
+  name: string;
+  title: string;
+  /** Never generated. See the note at the top of this file. */
+  description: string;
+}
+
+export interface ListOp<T, Ctx = undefined> extends CommonOp {
+  /** Never generated. */
+  render: (items: T[], context: Ctx) => string;
+  /** Never generated: an empty list should say what to try, not just "none". */
+  emptyMessage: string;
+  hint?: string;
+  /** Extra query parameters beyond paging, as a raw Zod shape. */
+  query?: z.ZodRawShape;
+  /** Maps validated params to the query the API reads. */
+  toParams?: (params: Record<string, unknown>) => Record<string, unknown>;
+  /** Fetched once per call and handed to `render` — e.g. a team-name lookup. */
+  prepare?: (client: JsmClient) => Promise<Ctx>;
+  /** Item shape for the structured payload. Defaults to a passthrough object. */
+  item?: z.ZodRawShape;
+}
+
+export interface GetOp<T> extends CommonOp {
+  render: (item: T) => string;
+}
+
+export interface WriteOp<T> extends CommonOp {
+  /** The request body's shape, as the model supplies it. */
+  input: z.ZodRawShape;
+  /** Maps validated params to the JSON body the API reads. */
+  toBody: (params: Record<string, unknown>) => Record<string, unknown>;
+  /** Field names the body carries, in the API's casing, for the drift guard. */
+  bodyFields: string[];
+  render: (item: T) => string;
+  /** Output shape for the structured payload. */
+  output?: z.ZodRawShape;
+}
+
+export interface RemoveOp extends CommonOp {}
+
+const passthroughItem = z.object({}).passthrough();
+
+/** `/v1/schedules` + "sched 1" -> `/v1/schedules/sched%201`. */
+function itemPath(config: ResourceConfig, id: string): string {
+  return `${config.path}/${encodeURIComponent(id)}`;
+}
+
+/** The manifest path uses the spec's brace form, not a real id. */
+function itemManifestPath(config: ResourceConfig): string {
+  return `${config.path}/{id}`;
+}
+
+export function defineListOperation<T, Ctx = undefined>(
+  config: ResourceConfig,
+  op: ListOp<T, Ctx>,
+): AnyToolDefinition {
+  const paging = config.paging;
+  const endpoint: EndpointDeclaration = {
+    method: "GET",
+    path: config.path,
+    query: ["size", "offset", ...Object.keys(op.query ?? {})],
+  };
+
+  return defineTool({
+    name: op.name,
+    toolset: config.toolset,
+    endpoint,
+    title: op.title,
+    description: op.description,
+    inputSchema: {
+      ...(op.query ?? {}),
+      limit: limitField,
+      offset: offsetField,
+      response_format: responseFormatField,
+    },
+    outputSchema: {
+      [config.plural]: z.array(op.item ? z.object(op.item).passthrough() : passthroughItem),
+      pagination: paginationOutputShape,
+    },
+    annotations: ANNOTATIONS.read,
+    handler: async (params, client) => {
+      const typed = params as Record<string, unknown> & {
+        limit: number;
+        offset: number;
+        response_format: ResponseFormat;
+      };
+      // Resolved before the page is fetched so the renderer is synchronous —
+      // a renderer that could await would be a renderer that could make N+1
+      // calls, one per row, without anything in the type saying so.
+      const context = (op.prepare ? await op.prepare(client) : undefined) as Ctx;
+
+      return executeList<T>({
+        client,
+        path: config.path,
+        params: { offset: typed.offset, ...(op.toParams ? op.toParams(typed) : {}) },
+        key: config.plural,
+        context: `list ${config.plural}`,
+        limit: typed.limit,
+        offset: typed.offset,
+        format: typed.response_format,
+        render: (items) => op.render(items, context),
+        emptyMessage: op.emptyMessage,
+        hint: op.hint ?? "Increase 'offset' to see the rest.",
+        ...(paging ? { paging } : {}),
+        itemsKey: config.itemsKey,
+      });
+    },
+  });
+}
+
+export function defineGetOperation<T>(config: ResourceConfig, op: GetOp<T>): AnyToolDefinition {
+  return defineTool({
+    name: op.name,
+    toolset: config.toolset,
+    endpoint: { method: "GET", path: itemManifestPath(config) },
+    title: op.title,
+    description: op.description,
+    inputSchema: {
+      [config.idParam]: config.idField,
+      response_format: responseFormatField,
+    },
+    outputSchema: { [config.noun]: passthroughItem },
+    annotations: ANNOTATIONS.read,
+    handler: async (params, client) => {
+      const typed = params as Record<string, unknown>;
+      const id = String(typed[config.idParam]);
+      try {
+        const item = await client.getOne<T>(itemPath(config, id));
+        return ok(op.render(item), { [config.noun]: item as Record<string, unknown> });
+      } catch (error) {
+        return fail(
+          handleApiError(error, `get ${config.noun}`, {
+            method: "GET",
+            path: itemManifestPath(config),
+          }),
+        );
+      }
+    },
+  });
+}
+
+export function defineCreateOperation<T>(
+  config: ResourceConfig,
+  op: WriteOp<T>,
+): AnyToolDefinition {
+  return defineTool({
+    name: op.name,
+    toolset: config.toolset,
+    endpoint: { method: "POST", path: config.path, body: op.bodyFields },
+    title: op.title,
+    description: op.description,
+    inputSchema: op.input,
+    outputSchema: op.output ?? { [config.noun]: passthroughItem },
+    annotations: ANNOTATIONS.create,
+    handler: async (params, client) =>
+      executeWrite<T>(client, {
+        label: `Create ${config.noun}`,
+        method: "POST",
+        path: config.path,
+        body: op.toBody(params as Record<string, unknown>),
+        // Configuration writes answer with the object, not a receipt. Reporting
+        // them as async would point the model at a request id that was never
+        // issued.
+        mode: "sync",
+        subject: { key: config.idParam, noun: config.noun },
+        render: op.render,
+        structured: (item) => ({ [config.noun]: item as Record<string, unknown> }),
+      }),
+  });
+}
+
+export function defineUpdateOperation<T>(
+  config: ResourceConfig,
+  op: WriteOp<T>,
+): AnyToolDefinition {
+  return defineTool({
+    name: op.name,
+    toolset: config.toolset,
+    endpoint: { method: "PATCH", path: itemManifestPath(config), body: op.bodyFields },
+    title: op.title,
+    description: op.description,
+    inputSchema: { [config.idParam]: config.idField, ...op.input },
+    outputSchema: op.output ?? { [config.noun]: passthroughItem },
+    annotations: ANNOTATIONS.update,
+    handler: async (params, client) => {
+      const typed = params as Record<string, unknown>;
+      const id = String(typed[config.idParam]);
+      return executeWrite<T>(client, {
+        label: `Update ${config.noun}`,
+        method: "PATCH",
+        path: itemPath(config, id),
+        body: op.toBody(typed),
+        mode: "sync",
+        subject: { key: config.idParam, value: id, noun: config.noun },
+        render: op.render,
+        structured: (item) => ({ [config.noun]: item as Record<string, unknown> }),
+      });
+    },
+  });
+}
+
+export function defineRemoveOperation(config: ResourceConfig, op: RemoveOp): AnyToolDefinition {
+  return defineTool({
+    name: op.name,
+    toolset: config.toolset,
+    endpoint: { method: "DELETE", path: itemManifestPath(config) },
+    title: op.title,
+    description: op.description,
+    inputSchema: { [config.idParam]: config.idField },
+    outputSchema: { deleted: z.boolean(), [config.idParam]: z.string().optional() },
+    annotations: ANNOTATIONS.remove,
+    handler: async (params, client) => {
+      const typed = params as Record<string, unknown>;
+      const id = String(typed[config.idParam]);
+      return executeWrite(client, {
+        label: `Delete ${config.noun}`,
+        method: "DELETE",
+        path: itemPath(config, id),
+        mode: "deleted",
+        subject: { key: config.idParam, value: id, noun: config.noun },
+      });
+    },
+  });
+}
+
+/**
+ * Composes a family from whichever operations it actually has. Every field is
+ * optional because the API is not uniform: some resources have no update
+ * endpoint, some no delete, and inventing one to fill the shape would be a tool
+ * that 404s.
+ */
+export interface FamilyOperations<T, Ctx = undefined> {
+  list?: ListOp<T, Ctx>;
+  get?: GetOp<T>;
+  create?: WriteOp<T>;
+  update?: WriteOp<T>;
+  remove?: RemoveOp;
+}
+
+export function defineResourceFamily<T, Ctx = undefined>(
+  config: ResourceConfig,
+  ops: FamilyOperations<T, Ctx>,
+): AnyToolDefinition[] {
+  const tools: AnyToolDefinition[] = [];
+  if (ops.list) tools.push(defineListOperation<T, Ctx>(config, ops.list));
+  if (ops.get) tools.push(defineGetOperation<T>(config, ops.get));
+  if (ops.create) tools.push(defineCreateOperation<T>(config, ops.create));
+  if (ops.update) tools.push(defineUpdateOperation<T>(config, ops.update));
+  if (ops.remove) tools.push(defineRemoveOperation(config, ops.remove));
+  return tools;
+}

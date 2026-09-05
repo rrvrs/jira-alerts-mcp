@@ -51,13 +51,22 @@ export interface WriteOptions<T> {
   subject?: { key: string; value?: string | undefined; noun: string };
   /** Required for mode "sync": renders the object the API returned. */
   render?: (data: T) => string;
+  /**
+   * Optional for mode "sync": builds the structured payload from the response.
+   * The default spreads the response's own fields alongside the subject, which
+   * suits a tool whose output schema names those fields. A tool that reports
+   * the object under a single key — as the resource factory's create and update
+   * do, to match its get — needs to say so, or the SDK rejects the result
+   * against its own declared output schema.
+   */
+  structured?: (data: T) => Record<string, unknown>;
 }
 
 export async function executeWrite<T>(
   client: JsmClient,
   options: WriteOptions<T>,
 ): Promise<ToolResult> {
-  const { label, method, path, body, params, mode, subject, render } = options;
+  const { label, method, path, body, params, mode, subject, render, structured } = options;
   const subjectFields =
     subject && subject.value !== undefined ? { [subject.key]: subject.value } : {};
 
@@ -80,7 +89,11 @@ export async function executeWrite<T>(
       }
       return ok(render(response), {
         ...subjectFields,
-        ...(response && typeof response === "object" ? (response as Record<string, unknown>) : {}),
+        ...(structured
+          ? structured(response)
+          : response && typeof response === "object"
+            ? (response as Record<string, unknown>)
+            : {}),
       });
     }
 

@@ -70,3 +70,24 @@ export const sourceField = z
   .string()
   .optional()
   .describe("Free-text source label shown in the alert activity log, e.g. 'claude-mcp'.");
+
+/**
+ * The pagination block every list tool reports.
+ *
+ * Lives here rather than in a domain's shapes because it is not a fact about
+ * alerts: the on-call tools already imported it across domains from
+ * tools/alerts/shapes.ts, and the resource factory would have had to do the
+ * same. `passthrough` because a dialect may add its own key — a cursor-paged
+ * endpoint reports next_cursor where an offset-paged one reports next_offset.
+ */
+export const paginationOutputShape = z
+  .object({
+    count: z.number(),
+    offset: z.number().optional(),
+    has_more: z.boolean(),
+    next_offset: z.number().optional(),
+    next_cursor: z.string().optional(),
+    truncated: z.boolean().optional(),
+    total: z.number().optional(),
+  })
+  .passthrough();

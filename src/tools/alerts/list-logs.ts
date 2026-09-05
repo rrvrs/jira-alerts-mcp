@@ -8,7 +8,8 @@ import { renderLogs } from "../../services/format.js";
 import type { AlertLog } from "../../types.js";
 import { defineTool } from "../define.js";
 import { executeList } from "../list-executor.js";
-import { alertTimelineShape, paginationOutputShape } from "./shapes.js";
+import { paginationOutputShape } from "../../schemas/common.js";
+import { alertTimelineShape } from "./shapes.js";
 
 export const listAlertLogs = defineTool({
   name: "jsm_list_alert_logs",

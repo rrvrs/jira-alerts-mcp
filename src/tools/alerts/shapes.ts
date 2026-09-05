@@ -25,18 +25,6 @@ export const alertOutputShape = z
   .passthrough();
 
 /** Pagination block shared by every list tool's outputSchema. */
-export const paginationOutputShape = z
-  .object({
-    count: z.number(),
-    offset: z.number().optional(),
-    has_more: z.boolean(),
-    next_offset: z.number().optional(),
-    next_cursor: z.string().optional(),
-    truncated: z.boolean().optional(),
-    total: z.number().optional(),
-  })
-  .passthrough();
-
 export const listAlertsShape = {
   query: z
     .string()
