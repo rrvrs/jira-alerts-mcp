@@ -152,6 +152,18 @@ expect(
   `src/constants.ts SERVER_NAME (${serverName}) !== package.json name (${pkg.name})`,
 );
 
+// --- The vendored spec must not ship to npm --------------------------------
+
+// 614 KB of OpenAPI document is a CI input, not something every install should
+// download. `files` is an allowlist so this holds today; asserting it means a
+// later edit that adds "spec" — or drops the allowlist for an ignore file —
+// fails here instead of in a published tarball.
+expect(
+  Array.isArray(pkg.files) &&
+    !pkg.files.some((entry) => entry.replace(/^\.\//, "").startsWith("spec")),
+  "package.json `files` would publish spec/ — the vendored OpenAPI document is a CI input, not a runtime dependency",
+);
+
 // --- Declared floors vs installed versions ---------------------------------
 //
 // `npm outdated` compares installed against *latest*, so it stays silent while

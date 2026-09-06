@@ -84,7 +84,7 @@ export class JsmClient {
    * Query params with `undefined` values are dropped by axios automatically.
    */
   async request<T>(
-    method: "GET" | "POST" | "PUT" | "DELETE",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     options: { params?: Record<string, unknown> | undefined; body?: unknown } = {},
   ): Promise<T> {
@@ -104,17 +104,35 @@ export class JsmClient {
    * endpoints and under `values` on newer ones. Rather than guess per
    * endpoint, accept both and expose a single shape to the tools.
    */
-  async getCollection<T>(path: string, params?: Record<string, unknown>): Promise<Paged<T>> {
-    const raw = await this.request<Record<string, unknown>>("GET", path, {
+  async getCollection<T>(
+    path: string,
+    params?: Record<string, unknown>,
+    options: { itemsKey?: string | undefined } = {},
+  ): Promise<Paged<T>> {
+    const raw = await this.request<unknown>("GET", path, {
       params,
     });
 
-    const items = (raw.data ?? raw.values ?? []) as T[];
-    const paging = (raw.paging ?? raw.links) as Paged<T>["paging"] | undefined;
+    // Two envelopes escape the `data`/`values` convention entirely, and both
+    // fail silently rather than loudly: GET /v1/teams returns
+    // {platformTeams: [...]}, and GET /v1/teams/{teamId}/roles returns a bare
+    // JSON array. Either would normalise to [] and be reported as "none found"
+    // against a populated tenant — a wrong answer, not an error.
+    if (Array.isArray(raw)) {
+      return { items: raw as T[], paging: undefined, totalCount: undefined };
+    }
+
+    const envelope = (raw ?? {}) as Record<string, unknown>;
+    const items = (
+      options.itemsKey
+        ? (envelope[options.itemsKey] ?? [])
+        : (envelope.data ?? envelope.values ?? [])
+    ) as T[];
+    const paging = (envelope.paging ?? envelope.links) as Paged<T>["paging"] | undefined;
     // The alerts endpoint reports the grand total under `count`, not
     // `totalCount` — reading only the latter is why `pagination.total` was
     // never populated.
-    const rawTotal = raw.totalCount ?? raw.count;
+    const rawTotal = envelope.totalCount ?? envelope.count;
     const totalCount = typeof rawTotal === "number" ? rawTotal : undefined;
 
     return { items: Array.isArray(items) ? items : [], paging, totalCount };

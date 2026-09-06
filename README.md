@@ -113,7 +113,7 @@ make here — `claude_desktop_config.json` is already per-user, the same reach a
 
 **4. Check it works.** Ask your agent to list your open alerts. That runs
 `jsm_list_alerts`, which needs no ids and confirms your credentials and the
-`read:ops-alert` scope that eight of the thirteen tools share.
+`read:ops-alert` scope that nine of the fourteen tools share.
 
 Then ask who is on call, which runs `jsm_list_schedules`. That is a **separate**
 check, because schedules need `read:ops-config` — if alerts work and schedules
@@ -191,6 +191,8 @@ without republishing:
 | `JSM_CLOUD_ID` | yes | Your Atlassian site's cloud id (a UUID) |
 | `JSM_EMAIL` + `JSM_API_TOKEN` | one of | [Create a token](https://id.atlassian.com/manage-profile/security/api-tokens) |
 | `JSM_OAUTH_TOKEN` | one of | OAuth 3LO bearer; takes precedence if set |
+| `JSM_TOOLSETS` | no | Which tool families to register — see [Choosing your toolsets](#choosing-your-toolsets). Unset registers `core` |
+| `JSM_READ_ONLY` | no | `true` withholds every write tool |
 | `TRANSPORT` | no | `stdio` (default) or `http` |
 | `PORT` / `HOST` | no | HTTP transport; defaults to `127.0.0.1:3000` |
 | `ALLOWED_HOSTS` | no | Comma-separated `Host` allowlist. Required if you set `HOST` beyond loopback — see [SECURITY.md](SECURITY.md) |
@@ -203,13 +205,53 @@ read `.env` itself — an MCP server is launched by its client, and the client o
 the environment. Use the file as a checklist for your client's `env` block, or
 `set -a; source .env; set +a` for local development.
 
+### Choosing your toolsets
+
+The JSM Operations API is roughly 240 operations. Registering all of them would
+hand your client a tool list it cannot choose from accurately, so the surface is
+cut into named **toolsets** and you pick:
+
+| Name | What it registers | Scope |
+|---|---|---|
+| `alerts` | Alert reads: search, detail, notes, activity logs, request status | `read:ops-alert:…` |
+| `alert-actions` | Create, acknowledge, close, annotate, add responders | `read:` + `write:ops-alert:…` |
+| `oncall` | Schedules, who is on call now and next, shift timelines | `read:ops-config:…` |
+
+Plus three **profiles**, which are bundles of the above:
+
+| Profile | Contents |
+|---|---|
+| `core` | **The default.** The thirteen tools that shipped before toolsets existed, plus `jsm_create_alert` |
+| `responder` | `alerts` + `alert-actions` + `oncall` |
+| `all` | Every toolset |
+
+```jsonc
+"env": { "JSM_TOOLSETS": "responder" }     // or "alerts,oncall", or "all"
+```
+
+Names combine freely, and the flags `--toolsets=a,b` and `--read-only` override
+the environment. A name that isn't in the tables above stops the server at
+startup with the valid names and a suggestion — a typo should not quietly leave
+you with fewer tools than you asked for.
+
+`core` and `responder` hold the same tools today, and are deliberately not the
+same mechanism. `core` is a frozen list of names, so upgrading never
+changes what your client sees or what it auto-approves; `responder` is derived
+from its toolsets and widens as families land.
+
+**`jsm_list_capabilities` is always registered**, whatever you select. It reports
+every toolset, whether it is loaded, its scopes, and the variable to change — so
+when you ask for something the current selection doesn't cover, you get "that's
+in the `oncall` toolset" rather than "this server can't do that". Changing
+`JSM_TOOLSETS` needs a restart; nothing can enable a toolset mid-conversation.
+
 **Required scopes.** Alerts and on-call sit behind **different** scopes, which is
 the single most common setup mistake:
 
 | Tools | Scope |
 |---|---|
 | The 5 alert reads | `read:ops-alert:jira-service-management` |
-| The 4 alert writes | `read:ops-alert:…` **and** `write:ops-alert:…` — both |
+| The 5 alert writes | `read:ops-alert:…` **and** `write:ops-alert:…` — both |
 | `jsm_list_schedules`, `jsm_get_on_call`, `jsm_get_next_on_call`, `jsm_get_schedule_timeline` | `read:ops-config:jira-service-management` |
 | Resolving responder ids to names (optional) | `read:jira-user` |
 
@@ -285,6 +327,7 @@ still unacknowledged, and acknowledges it again.
 | `jsm_list_alert_notes` | `GET /v1/alerts/{id}/notes` | read |
 | `jsm_list_alert_logs` | `GET /v1/alerts/{id}/logs` | read |
 | `jsm_get_request_status` | `GET /v1/alerts/requests/{id}` | read |
+| `jsm_create_alert` | `POST /v1/alerts` | write |
 | `jsm_acknowledge_alert` | `POST /v1/alerts/{id}/acknowledge` | write |
 | `jsm_close_alert` | `POST /v1/alerts/{id}/close` | write |
 | `jsm_add_alert_note` | `POST /v1/alerts/{id}/notes` | write |
@@ -293,11 +336,18 @@ still unacknowledged, and acknowledges it again.
 | `jsm_get_on_call` | `GET /v1/schedules/{id}/on-calls` | read |
 | `jsm_get_next_on_call` | `GET /v1/schedules/{id}/next-on-calls` | read |
 | `jsm_get_schedule_timeline` | `GET /v1/schedules/{id}/timeline` | read |
+| `jsm_list_capabilities` | — (answers from configuration) | read |
 
-Deliberately **not** implemented: `DELETE /v1/alerts/{id}` and alert creation.
-Deleting alerts destroys audit history with no undo, and alert creation belongs
-to the integration API (`/jsm/ops/integration/v2/alerts`) with an integration
-key, not to an interactive agent. Open an issue if you have a concrete need.
+`jsm_create_alert` pages people. A created alert enters the team's routing and
+escalation rules exactly as one raised by a monitoring integration would. Its
+`alias` is the de-duplication key: creating against an alias that already has an
+open alert increments that alert's count instead of raising a second one, which
+is what makes a retried create safe — and what makes a carelessly reused alias
+quietly do nothing.
+
+Not implemented yet: `DELETE /v1/alerts/{id}`. Deleting an alert destroys audit
+history with no undo, which is why it has waited. Open an issue if you need it
+sooner.
 
 ---
 
@@ -331,10 +381,17 @@ the rehosted Opsgenie surface — with its own scopes, its own id format and its
 own asynchronous write semantics. The MCP Registry lists 30 Jira servers; every
 one of them talks to work items. None can tell you what is paging you right now.
 [`atlassian/atlassian-mcp-server`](https://github.com/atlassian/atlassian-mcp-server)
-does not close the gap either: it covers Jira, Confluence, JSM *requests*,
-Bitbucket, Compass and the Teamwork Graph, but has no tool for alerts, schedules
-or on-call — and being a hosted, closed server, that gap is Atlassian's to close
-rather than something a contribution can fix.
+narrows the gap but does not close it. Since February 2026 it ships four JSM
+Operations tools — `getJsmOpsAlerts`, `getJsmOpsScheduleInfo`, `getJsmOpsTeamInfo`
+and `updateJsmOpsAlert` — and they are coarse: a single `updateJsmOpsAlert` covers
+acknowledge, unacknowledge, close and escalate, and nothing covers notes, logs,
+tags, attachments, snooze, assign, request status, timelines, rotations,
+overrides, heartbeats, maintenance, routing, integrations or audit logs. They are
+also absent from that repository's README, documented only on Atlassian's
+[supported tools page](https://support.atlassian.com/atlassian-rovo-mcp-server/docs/supported-tools/),
+and were API-token-only at launch — an OAuth install sees none of them. Being a
+hosted, closed server, those gaps are Atlassian's to close rather than something
+a contribution can fix.
 
 **The Opsgenie MCP servers that do exist speak an API with an end date.**
 [giantswarm/mcp-opsgenie](https://github.com/giantswarm/mcp-opsgenie),

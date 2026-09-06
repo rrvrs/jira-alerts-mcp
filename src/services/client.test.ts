@@ -122,6 +122,25 @@ describe("JsmClient.getCollection", () => {
     assert.equal(page.items[0]?.id, "from-data");
   });
 
+  it("reads a named key for envelopes that use neither", async () => {
+    // GET /v1/teams answers under `platformTeams`. Without this it normalises
+    // to [] and a populated tenant is reported as having no teams — a wrong
+    // answer rather than an error, which is the failure mode worth testing.
+    const page = await clientReturning({ platformTeams: [{ id: "t" }] }).getCollection(
+      "/v1/teams",
+      undefined,
+      {
+        itemsKey: "platformTeams",
+      },
+    );
+    assert.equal(page.items.length, 1);
+  });
+
+  it("accepts a bare array, which GET /v1/teams/{id}/roles returns", async () => {
+    const page = await clientReturning([{ id: "r1" }, { id: "r2" }]).getCollection("/x");
+    assert.equal(page.items.length, 2);
+  });
+
   it("returns an empty list when neither key is present", async () => {
     const page = await clientReturning({ something: "else" }).getCollection("/x");
     assert.deepEqual(page.items, []);

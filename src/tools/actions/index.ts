@@ -1,7 +1,7 @@
 /**
  * Alert write tools: acknowledge, close, add note, add responder.
  *
- * Every endpoint here is asynchronous — see ./execute-action.ts.
+ * Every endpoint here is asynchronous — see ./alert-action.ts.
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -12,8 +12,10 @@ import { acknowledgeAlert } from "./acknowledge.js";
 import { addAlertNote } from "./add-note.js";
 import { addAlertResponder } from "./add-responder.js";
 import { closeAlert } from "./close.js";
+import { createAlert } from "./create-alert.js";
 
 export const alertActionTools: AnyToolDefinition[] = [
+  createAlert,
   acknowledgeAlert,
   closeAlert,
   addAlertNote,

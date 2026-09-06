@@ -16,17 +16,25 @@ import type { NextFunction, Request, Response } from "express";
 
 import { SERVER_NAME, SERVER_VERSION } from "./constants.js";
 import { JsmClient, JsmConfigError, loadConfig } from "./services/client.js";
-import { buildServer } from "./server.js";
+import { allTools, buildServer } from "./server.js";
+import { resolveSelection, ToolsetSelectionError, type Selection } from "./toolsets.js";
 
-async function runStdio(client: JsmClient): Promise<void> {
-  const server = buildServer(client);
+function describe(selection: Selection): string {
+  return (
+    `${selection.tools.length} tools from ${selection.requested.join(", ")}` +
+    (selection.readOnly ? ", read-only" : "")
+  );
+}
+
+async function runStdio(client: JsmClient, selection: Selection): Promise<void> {
+  const server = buildServer(client, selection);
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // stdout is the protocol channel — all logging goes to stderr.
-  console.error(`${SERVER_NAME} v${SERVER_VERSION} running via stdio`);
+  console.error(`${SERVER_NAME} v${SERVER_VERSION} running via stdio — ${describe(selection)}`);
 }
 
-async function runHttp(client: JsmClient): Promise<void> {
+async function runHttp(client: JsmClient, selection: Selection): Promise<void> {
   const port = Number.parseInt(process.env.PORT ?? "3000", 10);
   // Bind to loopback by default: this server holds credentials and should not
   // be exposed on all interfaces without a deliberate decision.
@@ -52,7 +60,7 @@ async function runHttp(client: JsmClient): Promise<void> {
   app.post("/mcp", async (req, res, next) => {
     // A fresh stateless transport per request avoids request-id collisions
     // between concurrent clients.
-    const server = buildServer(client);
+    const server = buildServer(client, selection);
     // @ts-expect-error The SDK types sessionIdGenerator as `?: () => string`, but
     // its own docs give `sessionIdGenerator: undefined` as the way to select
     // stateless mode. Under exactOptionalPropertyTypes those disagree. Dropping
@@ -123,7 +131,10 @@ async function runHttp(client: JsmClient): Promise<void> {
   });
 
   app.listen(port, host, () => {
-    console.error(`${SERVER_NAME} v${SERVER_VERSION} listening on http://${host}:${port}/mcp`);
+    console.error(
+      `${SERVER_NAME} v${SERVER_VERSION} listening on http://${host}:${port}/mcp — ` +
+        describe(selection),
+    );
   });
 }
 
@@ -140,13 +151,37 @@ async function main(): Promise<void> {
         "  JSM_EMAIL       Atlassian account email (with JSM_API_TOKEN)",
         "  JSM_API_TOKEN   Atlassian API token",
         "  JSM_OAUTH_TOKEN OAuth 3LO bearer token (alternative to email + token)",
+        "  JSM_TOOLSETS    Comma-separated toolsets or profiles to register.",
+        "                  Unset registers 'core', a frozen default list. Call",
+        "                  jsm_list_capabilities for the current names, counts",
+        "                  and scopes.",
+        "  JSM_READ_ONLY   'true' withholds every write tool",
         "  TRANSPORT       'stdio' (default) or 'http'",
         "  PORT / HOST     HTTP transport bind settings (default 127.0.0.1:3000)",
         "  ALLOWED_HOSTS   Comma-separated Host allowlist for the HTTP transport;",
         "                  required when binding beyond loopback",
+        "",
+        "Flags (override the environment):",
+        "  --toolsets=a,b  same as JSM_TOOLSETS",
+        "  --read-only     same as JSM_READ_ONLY=true",
       ].join("\n"),
     );
     return;
+  }
+
+  // Resolved once, before either transport starts. The HTTP transport builds a
+  // fresh server per request; re-reading the environment and re-filtering the
+  // catalogue on every call would buy nothing, and a tools/list that disagreed
+  // with the next tools/call would fail in a way the protocol cannot explain.
+  let selection: Selection;
+  try {
+    selection = resolveSelection(allTools, { env: process.env, argv: process.argv });
+  } catch (error) {
+    if (error instanceof ToolsetSelectionError) {
+      console.error(`Startup failed: ${error.message}`);
+      process.exit(1);
+    }
+    throw error;
   }
 
   let client: JsmClient;
@@ -161,9 +196,9 @@ async function main(): Promise<void> {
   }
 
   if ((process.env.TRANSPORT ?? "stdio") === "http") {
-    await runHttp(client);
+    await runHttp(client, selection);
   } else {
-    await runStdio(client);
+    await runStdio(client, selection);
   }
 }
 

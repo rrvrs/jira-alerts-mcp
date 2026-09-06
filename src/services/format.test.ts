@@ -635,11 +635,15 @@ describe("renderOnCall", () => {
 
 describe("renderAsyncReceipt", () => {
   it("surfaces the request id and points at the verification path", () => {
-    const text = renderAsyncReceipt("Acknowledge", baseAlert.id, {
-      result: "Request will be processed",
-      requestId: "req-123",
-      took: 3,
-    });
+    const text = renderAsyncReceipt(
+      "Acknowledge",
+      { noun: "alert", id: baseAlert.id },
+      {
+        result: "Request will be processed",
+        requestId: "req-123",
+        took: 3,
+      },
+    );
 
     assert.match(text, /req-123/);
     assert.match(text, /asynchronously/);
@@ -649,7 +653,7 @@ describe("renderAsyncReceipt", () => {
   });
 
   it("degrades gracefully when the API omits the receipt fields", () => {
-    const text = renderAsyncReceipt("Close", baseAlert.id, {});
+    const text = renderAsyncReceipt("Close", { noun: "alert", id: baseAlert.id }, {});
     assert.match(text, /not returned/);
     assert.match(text, /queued/);
   });

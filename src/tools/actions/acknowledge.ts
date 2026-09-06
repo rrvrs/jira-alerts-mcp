@@ -3,11 +3,23 @@
  */
 
 import { defineTool } from "../define.js";
-import { executeAction } from "./execute-action.js";
+import { alertAction } from "./alert-action.js";
 import { asyncOutputSchema, acknowledgeShape } from "./shapes.js";
 
 export const acknowledgeAlert = defineTool({
   name: "jsm_acknowledge_alert",
+  toolset: "alert-actions",
+  endpoint: {
+    method: "POST",
+    path: "/v1/alerts/{id}/acknowledge",
+    body: ["user", "source", "note"],
+    // The spec declares no request body for this endpoint at all — not an empty
+    // one, none. Opsgenie accepted user/source/note here and JSM Operations is
+    // a rehost, so these are sent on parity grounds. Worth confirming against a
+    // tenant: if the activity log shows the note, the spec is thin; if it does
+    // not, drop them from the shape rather than sending fields nothing reads.
+    allowUnknownBody: ["user", "source", "note"],
+  },
   title: "Acknowledge a JSM alert",
   description: `Acknowledge an open JSM alert, stopping further escalation notifications for it.
 
@@ -34,7 +46,7 @@ Examples:
     openWorldHint: true,
   },
   handler: async (params, client) =>
-    executeAction(client, "Acknowledge", params.alert_id, "acknowledge", {
+    alertAction(client, "Acknowledge", params.alert_id, "acknowledge", {
       user: params.user,
       source: params.source,
       note: params.note,
