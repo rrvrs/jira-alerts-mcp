@@ -229,7 +229,9 @@ describe("the alerts domain", () => {
 
     assert.deepEqual(names, [
       "jsm_get_alert",
+      "jsm_get_alert_attachment",
       "jsm_get_request_status",
+      "jsm_list_alert_attachments",
       "jsm_list_alert_logs",
       "jsm_list_alert_notes",
       "jsm_list_alerts",

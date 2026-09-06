@@ -7,6 +7,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { JsmClient } from "../../services/client.js";
 import { registerTools, type AnyToolDefinition } from "../define.js";
 import { getAlert } from "./get-alert.js";
+import { getAlertAttachment, listAlertAttachments } from "./attachments.js";
 import { listAlertLogs } from "./list-logs.js";
 import { listAlertNotes } from "./list-notes.js";
 import { listAlerts } from "./list-alerts.js";
@@ -17,6 +18,8 @@ export const alertReadTools: AnyToolDefinition[] = [
   getAlert,
   listAlertNotes,
   listAlertLogs,
+  listAlertAttachments,
+  getAlertAttachment,
   getRequestStatus,
 ];
 

@@ -76,6 +76,13 @@ export interface AlertNote {
   updatedAt?: string;
 }
 
+/** A file attached to an alert. `id` is a timestamp the API sends as a string. */
+export interface AlertAttachment {
+  id?: string;
+  attachmentName?: string;
+  insertedAt?: string;
+}
+
 export interface AlertLog {
   offset?: string;
   log: string;

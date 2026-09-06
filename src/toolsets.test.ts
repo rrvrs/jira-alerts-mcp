@@ -30,12 +30,27 @@ async function connectServer(client: JsmClient, selection: Selection): Promise<C
 }
 
 describe("resolveSelection", () => {
-  it("registers exactly this list when nothing is configured", () => {
+  it("defaults to the whole responder surface", () => {
+    const selection = resolveSelection(allTools);
+
+    assert.deepEqual(selection.requested, ["responder"]);
+    assert.deepEqual(selection.toolsets, [...TOOLSETS]);
+    assert.deepEqual(
+      names(selection),
+      allTools.map((tool) => tool.name),
+    );
+  });
+
+  it("still offers the pre-toolset thirteen, plus create, as `core`", () => {
     // Written out rather than compared against CORE_TOOL_NAMES on purpose.
     // Comparing the constant to itself would stay green through any edit and
-    // guard nothing; the point is that widening the default has to be typed
+    // guard nothing; the point is that changing this surface has to be typed
     // twice, in a change that says why.
-    assert.deepEqual(names(resolveSelection(allTools)), [
+    const selection = resolveSelection(allTools, {
+      env: { JSM_TOOLSETS: "core" } as NodeJS.ProcessEnv,
+    });
+
+    assert.deepEqual(names(selection), [
       "jsm_list_alerts",
       "jsm_get_alert",
       "jsm_list_alert_notes",
@@ -63,9 +78,11 @@ describe("resolveSelection", () => {
   });
 
   it("does not treat an unset variable as a request for everything", () => {
+    // `responder` and `all` hold the same tools today because every toolset is
+    // an alert or on-call one. They are not the same request, and when the
+    // config families land, this is the assertion that will say so.
     const selection = resolveSelection(allTools, { env: {} as NodeJS.ProcessEnv });
-    assert.equal(selection.requested.join(","), "core");
-    assert.ok(selection.tools.length < allTools.length + 1);
+    assert.deepEqual(selection.requested, ["responder"]);
   });
 
   it("expands a single toolset to just that family", () => {
@@ -100,14 +117,12 @@ describe("resolveSelection", () => {
     );
   });
 
-  it("keeps 'responder' toolset-derived rather than name-frozen", () => {
-    // Identical to core today, and deliberately not the same mechanism: this
-    // one widens as the alert family lands, which is why core is the default.
-    const responder = resolveSelection(allTools, {
-      env: { JSM_TOOLSETS: "responder" } as NodeJS.ProcessEnv,
+  it("keeps 'core' a narrower surface than the default", () => {
+    const core = resolveSelection(allTools, {
+      env: { JSM_TOOLSETS: "core" } as NodeJS.ProcessEnv,
     });
 
-    assert.deepEqual(responder.toolsets, [...TOOLSETS]);
+    assert.ok(core.tools.length < allTools.length);
   });
 
   it("ignores case and surrounding whitespace", () => {
@@ -250,7 +265,7 @@ describe("jsm_list_capabilities", () => {
       toolsets: Array<{ name: string; enabled: boolean; scopes: string[]; tool_count: number }>;
     };
 
-    assert.equal(payload.tool_count, CORE_TOOL_NAMES.length);
+    assert.equal(payload.tool_count, allTools.length);
     assert.equal(payload.read_only, false);
     assert.deepEqual(
       payload.toolsets.map((entry) => entry.name),

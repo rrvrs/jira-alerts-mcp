@@ -142,3 +142,152 @@ export const createOutputSchema = {
   result: z.string().optional(),
   alias: z.string().optional(),
 };
+
+export const unacknowledgeShape = {
+  ...actionBaseShape,
+  note: z
+    .string()
+    .max(25_000)
+    .optional()
+    .describe("Optional note explaining why the acknowledgement is being taken back."),
+};
+
+export const snoozeShape = {
+  ...actionBaseShape,
+  end_time: z
+    .string()
+    .datetime({ offset: true })
+    .describe(
+      "When the snooze ends, as an ISO 8601 instant with an offset, e.g. '2026-09-05T18:30:00Z'. " +
+        "Must be in the future — a past instant is accepted and the alert un-snoozes immediately.",
+    ),
+  note: z.string().max(25_000).optional().describe("Optional note recorded with the snooze."),
+};
+
+export const assignShape = {
+  ...actionBaseShape,
+  account_id: z
+    .string()
+    .min(1)
+    .describe(
+      "Atlassian account id of the assignee, e.g. '712020:9ae5385e-…'. NOT an email address and " +
+        "NOT a display name — both are rejected. Account ids appear in jsm_get_alert's responder " +
+        "and owner fields and in jsm_get_on_call.",
+    ),
+  note: z.string().max(25_000).optional().describe("Optional note recorded with the assignment."),
+};
+
+export const escalateShape = {
+  ...actionBaseShape,
+  escalation_id: z
+    .string()
+    .min(1)
+    .describe(
+      "Id of the escalation policy to escalate through. This is an escalation id, not a team or " +
+        "schedule id — the three are separate objects with separate ids.",
+    ),
+  note: z.string().max(25_000).optional().describe("Optional note recorded with the escalation."),
+};
+
+export const updateFieldShape = {
+  // Deliberately not actionBaseShape: the three PATCH endpoints behind this
+  // tool enumerate one property each and take no actor override.
+  alert_id: alertIdField,
+  field: z
+    .enum(["priority", "message", "description"])
+    .describe("Which field to overwrite. Each is a separate endpoint under the hood."),
+  value: z
+    .string()
+    .describe(
+      "The new value. For field='priority' this must be exactly one of P1, P2, P3, P4, P5. " +
+        "For 'message' keep it to one line — it is the headline responders read first. " +
+        "For 'description' anything goes, and an empty string clears it.",
+    ),
+};
+
+export const updateNoteShape = {
+  alert_id: alertIdField,
+  note_id: z
+    .string()
+    .min(1)
+    .describe("Id of the note to edit, from jsm_list_alert_notes. Not the note's text."),
+  note: noteField,
+};
+
+export const deleteNoteShape = {
+  alert_id: alertIdField,
+  note_id: z
+    .string()
+    .min(1)
+    .describe("Id of the note to delete, from jsm_list_alert_notes. Not the note's text."),
+};
+
+/** A note edit is synchronous and answers with the note itself. */
+export const noteOutputSchema = {
+  alert_id: z.string(),
+  note_id: z.string().optional(),
+  id: z.string().optional(),
+  note: z.string().optional(),
+  owner: z.string().optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+};
+
+export const deletedOutputSchema = {
+  deleted: z.boolean(),
+  note_id: z.string().optional(),
+};
+
+/** Optional note, shared by the tag and extra-property tools. */
+const changeNoteField = z
+  .string()
+  .max(25_000)
+  .optional()
+  .describe("Optional note recorded with the change.");
+
+const tagsField = z
+  .array(z.string().min(1))
+  .min(1, "pass at least one tag")
+  .describe("Tag names. Case-sensitive, and matched exactly on removal.");
+
+export const addTagsShape = { ...actionBaseShape, tags: tagsField, note: changeNoteField };
+
+export const removeTagsShape = { ...actionBaseShape, tags: tagsField, note: changeNoteField };
+
+export const addExtraPropertiesShape = {
+  ...actionBaseShape,
+  extra_properties: z
+    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+    .describe(
+      "Key/value context to attach, e.g. {'runbook': 'https://…', 'region': 'us-east-1'}. " +
+        "A key that already exists is overwritten.",
+    ),
+  note: changeNoteField,
+};
+
+export const removeExtraPropertiesShape = {
+  ...actionBaseShape,
+  keys: z
+    .array(z.string().min(1))
+    .min(1, "pass at least one key")
+    .describe("Property keys to remove. Keys, not values."),
+  note: changeNoteField,
+};
+
+export const deleteAlertShape = {
+  ...actionBaseShape,
+  note: changeNoteField,
+};
+
+export const customActionShape = {
+  ...actionBaseShape,
+  action_name: z
+    .string()
+    .min(1)
+    .describe(
+      "Name of a custom action configured for your organisation's integrations. Not free text: an " +
+        "unrecognised name is accepted and then does nothing. Ask the user what actions exist rather " +
+        "than guessing a plausible one.",
+    ),
+  note: changeNoteField,
+};

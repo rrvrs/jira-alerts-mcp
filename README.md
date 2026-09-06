@@ -213,16 +213,16 @@ cut into named **toolsets** and you pick:
 
 | Name | What it registers | Scope |
 |---|---|---|
-| `alerts` | Alert reads: search, detail, notes, activity logs, request status | `read:ops-alert:…` |
-| `alert-actions` | Create, acknowledge, close, annotate, add responders | `read:` + `write:ops-alert:…` |
+| `alerts` | Alert reads: search, detail, notes, activity logs, attachments, request status | `read:ops-alert:…` |
+| `alert-actions` | Create, acknowledge, close, snooze, assign, escalate, annotate, tag, and delete | `read:` + `write:ops-alert:…`, plus `delete:ops-alert:…` for the destructive ones |
 | `oncall` | Schedules, who is on call now and next, shift timelines | `read:ops-config:…` |
 
 Plus three **profiles**, which are bundles of the above:
 
 | Profile | Contents |
 |---|---|
-| `core` | **The default.** The thirteen tools that shipped before toolsets existed, plus `jsm_create_alert` |
-| `responder` | `alerts` + `alert-actions` + `oncall` |
+| `responder` | **The default.** `alerts` + `alert-actions` + `oncall` — the whole alert and on-call surface |
+| `core` | The thirteen tools that shipped before toolsets existed, plus `jsm_create_alert` |
 | `all` | Every toolset |
 
 ```jsonc
@@ -234,10 +234,15 @@ the environment. A name that isn't in the tables above stops the server at
 startup with the valid names and a suggestion — a typo should not quietly leave
 you with fewer tools than you asked for.
 
-`core` and `responder` hold the same tools today, and are deliberately not the
-same mechanism. `core` is a frozen list of names, so upgrading never
-changes what your client sees or what it auto-approves; `responder` is derived
-from its toolsets and widens as families land.
+`core` is a frozen list of names — the surface this server had before toolsets
+existed — kept so an install that wants exactly that can ask for it without
+listing thirteen tools. `responder` is derived from its toolsets and widens as
+families land, which is why it is the default: an alerts server whose alert tools
+are mostly invisible until you reconfigure it is not much use.
+
+`responder` and `all` hold the same tools today, because every toolset that
+exists is an alert or on-call one. They stop being the same request as soon as
+the configuration families land.
 
 **`jsm_list_capabilities` is always registered**, whatever you select. It reports
 every toolset, whether it is loaded, its scopes, and the variable to change — so
@@ -251,7 +256,8 @@ the single most common setup mistake:
 | Tools | Scope |
 |---|---|
 | The 5 alert reads | `read:ops-alert:jira-service-management` |
-| The 5 alert writes | `read:ops-alert:…` **and** `write:ops-alert:…` — both |
+| The alert writes | `read:ops-alert:…` **and** `write:ops-alert:…` — both |
+| The destructive alert tools | also `delete:ops-alert:jira-service-management` |
 | `jsm_list_schedules`, `jsm_get_on_call`, `jsm_get_next_on_call`, `jsm_get_schedule_timeline` | `read:ops-config:jira-service-management` |
 | Resolving responder ids to names (optional) | `read:jira-user` |
 
@@ -326,17 +332,36 @@ still unacknowledged, and acknowledges it again.
 | `jsm_get_alert` | `GET /v1/alerts/{id}` or `GET /v1/alerts/alias` | read |
 | `jsm_list_alert_notes` | `GET /v1/alerts/{id}/notes` | read |
 | `jsm_list_alert_logs` | `GET /v1/alerts/{id}/logs` | read |
+| `jsm_list_alert_attachments` | `GET /v1/alerts/{id}/attachments` | read |
+| `jsm_get_alert_attachment` | `GET /v1/alerts/{id}/attachments/{id}` | read |
 | `jsm_get_request_status` | `GET /v1/alerts/requests/{id}` | read |
 | `jsm_create_alert` | `POST /v1/alerts` | write |
 | `jsm_acknowledge_alert` | `POST /v1/alerts/{id}/acknowledge` | write |
 | `jsm_close_alert` | `POST /v1/alerts/{id}/close` | write |
 | `jsm_add_alert_note` | `POST /v1/alerts/{id}/notes` | write |
+| `jsm_unacknowledge_alert` | `POST /v1/alerts/{id}/unacknowledge` | write |
+| `jsm_snooze_alert` | `POST /v1/alerts/{id}/snooze` | write |
+| `jsm_assign_alert` | `POST /v1/alerts/{id}/assign` | write |
+| `jsm_escalate_alert` | `POST /v1/alerts/{id}/escalate` | write |
 | `jsm_add_alert_responder` | `POST /v1/alerts/{id}/responders` | write |
+| `jsm_update_alert_field` | `PATCH /v1/alerts/{id}/{priority,message,description}` | write |
+| `jsm_update_alert_note` | `PATCH /v1/alerts/{id}/notes/{id}` | write |
+| `jsm_delete_alert_note` | `DELETE /v1/alerts/{id}/notes/{id}` | **destructive** |
+| `jsm_add_alert_tags` | `POST /v1/alerts/{id}/tags` | write |
+| `jsm_remove_alert_tags` | `DELETE /v1/alerts/{id}/tags` | **destructive** |
+| `jsm_add_alert_extra_properties` | `POST /v1/alerts/{id}/extra-properties` | **destructive** |
+| `jsm_remove_alert_extra_properties` | `DELETE /v1/alerts/{id}/extra-properties` | **destructive** |
+| `jsm_delete_alert_attachment` | `DELETE /v1/alerts/{id}/attachments/{id}` | **destructive** |
+| `jsm_execute_alert_action` | `POST /v1/alerts/{id}/action` | **destructive** |
+| `jsm_delete_alert` | `DELETE /v1/alerts/{id}` | **destructive** |
 | `jsm_list_schedules` | `GET /v1/schedules` | read |
 | `jsm_get_on_call` | `GET /v1/schedules/{id}/on-calls` | read |
 | `jsm_get_next_on_call` | `GET /v1/schedules/{id}/next-on-calls` | read |
 | `jsm_get_schedule_timeline` | `GET /v1/schedules/{id}/timeline` | read |
 | `jsm_list_capabilities` | — (answers from configuration) | read |
+
+All of these are registered by default. Narrow the surface with `JSM_TOOLSETS`
+or `JSM_READ_ONLY` — see [Choosing your toolsets](#choosing-your-toolsets).
 
 `jsm_create_alert` pages people. A created alert enters the team's routing and
 escalation rules exactly as one raised by a monitoring integration would. Its
@@ -345,9 +370,22 @@ open alert increments that alert's count instead of raising a second one, which
 is what makes a retried create safe — and what makes a carelessly reused alias
 quietly do nothing.
 
-Not implemented yet: `DELETE /v1/alerts/{id}`. Deleting an alert destroys audit
-history with no undo, which is why it has waited. Open an issue if you need it
-sooner.
+Tools marked **destructive** carry `destructiveHint: true`, which is what MCP
+clients read to decide whether to prompt before running something. They are
+registered like any other tool — the annotation is the guardrail, not absence —
+and several of them need `delete:ops-alert:jira-service-management`, a separate
+grant from `write:ops-alert`. A token that can close alerts usually cannot delete
+them, and that is a sensible configuration rather than something to work around.
+
+`jsm_delete_alert` is included and is almost never the right tool. Closing an
+alert takes it out of the open queue and keeps the record of who was paged and
+what they tried; deleting throws that away for everyone, with no undo.
+
+Not implemented: `POST /v1/alerts/{id}/attachments` (uploading a file). It is the
+only endpoint in the API with a non-JSON body, and the only one that would
+require this server to read your local filesystem — a capability worth deciding
+on deliberately rather than acquiring as a side effect. Open an issue if you need
+it.
 
 ---
 

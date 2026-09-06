@@ -8,6 +8,7 @@ import { type Directory, renderIdentity } from "./directory.js";
 import { ResponseFormat } from "../schemas/common.js";
 import type {
   Alert,
+  AlertAttachment,
   AlertLog,
   AlertNote,
   AsyncActionResponse,
@@ -297,6 +298,30 @@ export function renderNotes(notes: AlertNote[]): string {
     .map(
       (n) =>
         `- **${timestamp(n.createdAt)}** — ${n.owner ?? "unknown"}\n  ${n.note.replace(/\n/g, "\n  ")}`,
+    )
+    .join("\n");
+}
+
+/** Single-note view, used after an edit so the caller sees what the note now says. */
+export function renderNote(note: AlertNote): string {
+  return [
+    `Note \`${note.id ?? note.offset ?? "unknown"}\` on the alert now reads:`,
+    "",
+    note.note,
+    "",
+    `- **Author**: ${note.owner ?? "unknown"}`,
+    `- **Created**: ${timestamp(note.createdAt)}`,
+    ...(note.updatedAt ? [`- **Updated**: ${timestamp(note.updatedAt)}`] : []),
+  ].join("\n");
+}
+
+export function renderAttachments(attachments: AlertAttachment[]): string {
+  if (!attachments.length) return "No attachments on this alert.";
+  return attachments
+    .map(
+      (attachment) =>
+        `- **${attachment.attachmentName ?? "unnamed"}** — added ${timestamp(attachment.insertedAt)}\n` +
+        `  - id: \`${attachment.id ?? "unknown"}\``,
     )
     .join("\n");
 }
