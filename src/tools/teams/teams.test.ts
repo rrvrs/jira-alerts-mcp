@@ -99,6 +99,53 @@ describe("teams toolset", () => {
     });
   });
 
+  it("does not invent a method and address the write endpoint never returned", async () => {
+    // The live shape, which the test above does not use: the spec answers these
+    // four writes with SimpleCreateData/SimpleData — an id, never the method or
+    // destination. Rendered as a full contact that printed "**?** — ?", so a
+    // create that had in fact succeeded read as a failure.
+    const { client } = stubClient(
+      { items: [] },
+      { write: { message: "Contact created", data: { id: "c-1" } } },
+    );
+    const mcp = await connectTools(teamTools, client);
+
+    const result = await callTool(mcp, "jsm_create_contact", { method: "email", to: "a@b.c" });
+    const text = textOf(result);
+
+    assert.match(text, /c-1/);
+    assert.doesNotMatch(text, /\?/);
+    // Says where the rest can be read, rather than leaving the gap unexplained.
+    assert.match(text, /jsm_get_contact/);
+  });
+
+  it("still renders the destination when a write endpoint does return it", async () => {
+    // Guards the fallback: the receipt reports whatever arrives, so an API that
+    // starts answering in full needs no change here.
+    const { client } = stubClient(
+      { items: [] },
+      { write: { data: { id: "c-1", method: "email", to: "a@b.c" } } },
+    );
+    const mcp = await connectTools(teamTools, client);
+
+    const text = textOf(
+      await callTool(mcp, "jsm_update_contact", { contact_id: "c-1", to: "a@b.c" }),
+    );
+
+    assert.match(text, /\*\*email\*\* — a@b\.c/);
+    assert.doesNotMatch(text, /jsm_get_contact/);
+  });
+
+  it("reports a deactivation by id, without a placeholder destination", async () => {
+    const { client } = stubClient({ items: [] }, { write: { data: { id: "c-1" } } });
+    const mcp = await connectTools(teamTools, client);
+
+    const text = textOf(await callTool(mcp, "jsm_deactivate_contact", { contact_id: "c-1" }));
+
+    assert.match(text, /c-1/);
+    assert.doesNotMatch(text, /\?/);
+  });
+
   it("declares only the query parameters it actually sends", async () => {
     const listTeams = teamTools.find((t) => t.name === "jsm_list_teams");
     assert.deepEqual(listTeams?.endpoint, { method: "GET", path: "/v1/teams", query: [] });

@@ -8,7 +8,11 @@
 
 import { z } from "zod";
 
-import { renderContact, renderContacts } from "../../services/render/teams.js";
+import {
+  renderContact,
+  renderContactReceipt,
+  renderContacts,
+} from "../../services/render/teams.js";
 import type { Contact } from "../../types.js";
 import { defineTool } from "../define.js";
 import { executeWrite } from "../execute-write.js";
@@ -98,7 +102,7 @@ A new contact method usually needs verifying before it delivers anything; read i
     },
     toBody: (params) => ({ method: params.method, to: params.to }),
     bodyFields: ["method", "to"],
-    render: (contact) => renderContact(contact),
+    render: (contact) => renderContactReceipt(contact),
   },
   update: {
     name: "jsm_update_contact",
@@ -119,7 +123,7 @@ Changing the destination may reset the method's verified status, so read it back
     },
     toBody: (params) => ({ to: params.to }),
     bodyFields: ["to"],
-    render: (contact) => renderContact(contact),
+    render: (contact) => renderContactReceipt(contact),
   },
   remove: {
     name: "jsm_delete_contact",
@@ -179,7 +183,7 @@ ${
         path: `/v1/users/contacts/${encodeURIComponent(params.contact_id)}/${action}`,
         mode: "sync",
         subject: { key: "contact_id", value: params.contact_id, noun: "contact" },
-        render: (contact) => renderContact(contact),
+        render: (contact) => renderContactReceipt(contact),
         structured: (contact) => ({ contact: contact as Record<string, unknown> }),
       }),
   });
