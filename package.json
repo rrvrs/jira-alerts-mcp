@@ -36,7 +36,8 @@
     "provenance": true
   },
   "files": [
-    "dist"
+    "dist",
+    "TOOLS.md"
   ],
   "scripts": {
     "start": "node dist/index.js",

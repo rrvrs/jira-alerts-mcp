@@ -106,7 +106,7 @@ Removing an `unverified` marker is how a family graduates. Do it in a commit tha
 7. Add rendering to [`src/services/format.ts`](src/services/format.ts). Don't build markdown inline in the tool.
 8. Set `annotations` honestly — `readOnlyHint`, `destructiveHint`, `idempotentHint`. Clients use these to decide what to auto-approve, and `readOnlyHint` is also the filter `JSM_READ_ONLY` applies, so a dishonest one now hands a write tool to someone who asked for a read-only server.
 9. Add tests, and drive them through `connectTools` from [`src/tools/test-support.ts`](src/tools/test-support.ts) rather than calling the handler directly. Calling handlers directly skips the SDK's output-schema validation — that is exactly how the empty-result bug above shipped with a green suite asserting it was fine.
-10. Update the tool table in the README.
+10. Update the tool table in [`TOOLS.md`](TOOLS.md).
 
 Adding a tool to an existing toolset does **not** change what existing installs see. The default selection is the `responder` profile, and `core` is a frozen list of names in `src/toolsets.ts` guarded by a snapshot test — an install pinned to `core` keeps exactly those names even when `core` is combined with another toolset, so its auto-approval surface cannot widen under it on a patch bump. Widening either default is a separate, deliberate change — edit the array and the snapshot together, and say so in the release notes.
 
