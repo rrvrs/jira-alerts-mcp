@@ -311,7 +311,7 @@ Returns: { "deleted": true, "name": string }
 
 Nothing then notices if the job it watched stops running, and no alert is raised to say the watch is gone. If the goal is to stop it alerting temporarily, jsm_update_heartbeat with enabled=false is reversible and leaves the configuration in place.
 
-Requires delete:ops-config:jira-service-management, which Atlassian account API tokens do not carry — see the README.`,
+Requires delete:ops-config:jira-service-management. That grant belongs to the individual token rather than to API-token auth — another token on the same account can hold it — so a 401 here means reissue JSM_API_TOKEN with the delete scopes included, or supply JSM_OAUTH_TOKEN, not that token auth cannot delete. See the README.`,
   inputSchema: { team_id: teamIdField, name: nameField },
   outputSchema: { deleted: z.boolean(), name: z.string().optional() },
   annotations: {

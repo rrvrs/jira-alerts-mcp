@@ -156,6 +156,6 @@ Returns: { "deleted": true, "override_alias": string }
 
 If the override's window is running right now, deleting it changes who is on call immediately — the rotation's own responder takes the shift back. Say so when reporting back.
 
-Requires delete:ops-config:jira-service-management, which Atlassian account API tokens do not carry — see the README.`,
+Requires delete:ops-config:jira-service-management. That grant belongs to the individual token rather than to API-token auth — another token on the same account can hold it — so a 401 here means reissue JSM_API_TOKEN with the delete scopes included, or supply JSM_OAUTH_TOKEN, not that token auth cannot delete. See the README.`,
   },
 });

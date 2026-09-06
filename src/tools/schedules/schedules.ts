@@ -143,6 +143,6 @@ Returns: { "deleted": true, "schedule_id": string }
 
 This is almost never the right tool. Setting enabled=false with jsm_update_schedule stops the schedule paging anyone and keeps the record of how the team was covered; deleting throws away the rotations, the overrides and the history for everyone, with no undo. Ask the user to confirm they mean delete rather than disable.
 
-Requires delete:ops-config:jira-service-management. An Atlassian account API token does not carry delete scopes, so this returns 401 on token auth however valid the credentials are — see the README.`,
+Requires delete:ops-config:jira-service-management. That grant belongs to the individual token rather than to API-token auth — another token on the same account can hold it — so a 401 here means reissue JSM_API_TOKEN with the delete scopes included, or supply JSM_OAUTH_TOKEN, not that token auth cannot delete. See the README.`,
   },
 });

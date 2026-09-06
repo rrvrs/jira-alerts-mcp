@@ -16,7 +16,7 @@
  * way of teaching a false contract, so `mode` has to be stated per tool.
  */
 
-import { type JsmClient, handleApiError } from "../services/client.js";
+import { type JsmClient, handleApiError, unwrapEnvelope } from "../services/client.js";
 import {
   fail,
   ok,
@@ -111,12 +111,19 @@ export async function executeWrite<T>(
         // where every other failure here lives.
         return fail(`Error (${label.toLowerCase()}): no renderer configured for a sync write.`);
       }
-      return ok(render(response), {
+      // Unwrapped for the same reason `getOne` unwraps: the four contact
+      // endpoints — POST /v1/users/contacts and the PATCH, activate and
+      // deactivate beside it — answer `{message, data}`, and reporting that
+      // envelope verbatim rendered a contact whose every field was missing.
+      // Only "sync" gets this. An async receipt is not wrapped, and unwrapping
+      // one would lose `requestId`; "deleted" and "confirmed" have no body.
+      const data = unwrapEnvelope<T>(response);
+      return ok(render(data), {
         ...subjectFields,
         ...(structured
-          ? structured(response)
-          : response && typeof response === "object"
-            ? (response as Record<string, unknown>)
+          ? structured(data)
+          : data && typeof data === "object"
+            ? (data as Record<string, unknown>)
             : {}),
       });
     }

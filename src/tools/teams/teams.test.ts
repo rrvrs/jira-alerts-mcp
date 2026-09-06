@@ -54,6 +54,51 @@ describe("teams toolset", () => {
     assert.equal(payload.pagination.has_more, false);
   });
 
+  it("offers no next_offset when an unpaged response had to be trimmed", async () => {
+    // The gap the test above left: has_more does go true when the render is
+    // truncated, and next_offset used to be emitted beside it. This endpoint
+    // reads no offset and executeList does no local slicing, so a caller
+    // following that offset was served the same first records forever.
+    const items = Array.from({ length: 400 }, (_, i) => ({
+      teamId: `team-${i}`,
+      teamName: `A team with a name long enough to fill the character budget ${i}`,
+    }));
+    const { client, calls } = stubClient({ items });
+    const mcp = await connectTools(teamTools, client);
+
+    const result = await callTool(mcp, "jsm_list_teams", { limit: 100 });
+
+    const payload = result.structuredContent as {
+      pagination: { has_more: boolean; truncated?: boolean; next_offset?: number; offset?: number };
+    };
+    assert.equal(payload.pagination.truncated, true);
+    assert.equal(payload.pagination.has_more, true);
+    assert.equal(payload.pagination.next_offset, undefined);
+    // Nor an offset, on an endpoint that has no such parameter.
+    assert.equal(payload.pagination.offset, undefined);
+    assert.ok(!("offset" in (calls[0]?.params ?? {})));
+  });
+
+  it("reports the created contact, not the envelope the API wrapped it in", async () => {
+    // POST /v1/users/contacts answers {message, data}. Reported verbatim, the
+    // id came back undefined and the contact could not be read back at all.
+    const { client } = stubClient(
+      { items: [] },
+      { write: { message: "Contact created", data: { id: "c-1", method: "email", to: "a@b.c" } } },
+    );
+    const mcp = await connectTools(teamTools, client);
+
+    const result = await callTool(mcp, "jsm_create_contact", { method: "email", to: "a@b.c" });
+
+    assert.match(textOf(result), /c-1/);
+    assert.doesNotMatch(textOf(result), /Contact created/);
+    assert.deepEqual((result.structuredContent as { contact: unknown }).contact, {
+      id: "c-1",
+      method: "email",
+      to: "a@b.c",
+    });
+  });
+
   it("declares only the query parameters it actually sends", async () => {
     const listTeams = teamTools.find((t) => t.name === "jsm_list_teams");
     assert.deepEqual(listTeams?.endpoint, { method: "GET", path: "/v1/teams", query: [] });

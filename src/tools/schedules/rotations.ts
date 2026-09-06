@@ -154,6 +154,6 @@ Returns: { "deleted": true, "rotation_id": string }
 
 Deleting the last rotation on a schedule leaves it paging nobody while still looking configured — which is the failure mode nobody notices until an alert goes unanswered. Check with jsm_list_rotations first, and prefer emptying the participants or setting an end date if you only want it to stop.
 
-Requires delete:ops-config:jira-service-management, which Atlassian account API tokens do not carry — see the README.`,
+Requires delete:ops-config:jira-service-management. That grant belongs to the individual token rather than to API-token auth — another token on the same account can hold it — so a 401 here means reissue JSM_API_TOKEN with the delete scopes included, or supply JSM_OAUTH_TOKEN, not that token auth cannot delete. See the README.`,
   },
 });

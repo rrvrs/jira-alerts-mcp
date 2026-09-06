@@ -149,7 +149,10 @@ export function buildPagination({
     count: returned,
     ...(offset !== undefined ? { offset } : {}),
     has_more: hasMore,
-    ...(hasMore && offset !== undefined ? { next_offset: offset + returned } : {}),
+    // Never on an unpaged endpoint, even if the caller handed us an offset:
+    // it has no way to serve a later page, so the next_offset would point back
+    // at the same first records and a caller following it would loop forever.
+    ...(hasMore && offset !== undefined && !unpaged ? { next_offset: offset + returned } : {}),
     ...(nextCursor ? { next_cursor: nextCursor } : {}),
     ...(truncated ? { truncated: true } : {}),
     ...(totalCount !== undefined ? { total: totalCount } : {}),

@@ -159,6 +159,6 @@ Returns: { "deleted": true, "escalation_id": string }
 
 Any routing rule pointing at this escalation stops escalating, and unacknowledged alerts then go no further than their first responder. Check jsm_list_routing_rules for references before deleting, and prefer enabled=false if you only want to pause it.
 
-Requires delete:ops-config:jira-service-management, which Atlassian account API tokens do not carry — see the README.`,
+Requires delete:ops-config:jira-service-management. That grant belongs to the individual token rather than to API-token auth — another token on the same account can hold it — so a 401 here means reissue JSM_API_TOKEN with the delete scopes included, or supply JSM_OAUTH_TOKEN, not that token auth cannot delete. See the README.`,
   },
 });

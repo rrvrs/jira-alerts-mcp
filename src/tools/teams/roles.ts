@@ -49,7 +49,7 @@ Args:
 
 Returns (json format): { "team_roles": [ { "id": string, "name": string, "rights": [...] } ], "pagination": { "count": number, "has_more": false } }
 
-This endpoint returns every role at once and takes no paging parameters, so limit and offset do nothing and has_more is always false.
+This endpoint returns every role at once and takes no paging parameters, so limit and offset do nothing. has_more is false unless the response was too large to render, in which case it is trimmed and there is no way to ask for the rest.
 
 A role with no rights grants nothing — it is not a shorthand for "everything".`,
     render: (roles) => ["# Team roles", "", renderTeamRoles(roles)].join("\n"),
@@ -119,6 +119,6 @@ Returns: { "deleted": true, "role_id": string }
 
 Anyone holding this role loses the rights it granted. Check who holds it before deleting, and prefer narrowing the role's rights with jsm_update_team_role if you only want to reduce access.
 
-Requires delete:ops-config:jira-service-management, which Atlassian account API tokens do not carry — see the README.`,
+Requires delete:ops-config:jira-service-management. That grant belongs to the individual token rather than to API-token auth — another token on the same account can hold it — so a 401 here means reissue JSM_API_TOKEN with the delete scopes included, or supply JSM_OAUTH_TOKEN, not that token auth cannot delete. See the README.`,
   },
 });

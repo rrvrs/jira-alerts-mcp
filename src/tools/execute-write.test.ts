@@ -199,6 +199,49 @@ describe("executeWrite — sync and deleted modes", () => {
     assert.match(textOf(result), /Updated: edited/);
     assert.doesNotMatch(textOf(result), /asynchronously/);
   });
+
+  it("strips the data envelope from a sync write, as the matching get already does", async () => {
+    // The four contact endpoints answer {message, data}. Reporting that
+    // verbatim rendered a contact whose every field was missing, and put the
+    // envelope — not the contact — into structuredContent, so its id could not
+    // be read back from the receipt of the call that created it.
+    const { client } = stubClient(
+      { items: [] },
+      { write: { message: "Contact updated", data: { note: "edited", id: "c-1" } } },
+    );
+    const mcp = await connectTools(
+      [
+        writeProbe("probe_envelope", {
+          method: "PATCH",
+          path: "/v1/users/u/contacts/c-1",
+          mode: "sync",
+          body: { note: "edited" },
+          render: (data) => `Updated: ${(data as { note: string }).note}`,
+        }),
+      ],
+      client,
+    );
+
+    const result = await callTool(mcp, "probe_envelope");
+
+    assert.match(textOf(result), /Updated: edited/);
+    assert.deepEqual(result.structuredContent, { note: "edited", id: "c-1" });
+  });
+
+  it("leaves an async receipt alone, which has no envelope to strip", async () => {
+    // Unwrapping unconditionally would be worse than the bug: a receipt whose
+    // body happened to carry `data` would lose requestId, and the model would
+    // be told to poll nothing.
+    const { client } = stubClient(
+      { items: [] },
+      { write: { result: "Request will be processed", requestId: "req-1" } },
+    );
+    const mcp = await connectTools(alertActionTools, client);
+
+    const result = await callTool(mcp, "jsm_acknowledge_alert", { alert_id: ALERT_ID });
+
+    assert.match(textOf(result), /req-1/);
+  });
 });
 
 describe("paging dialects", () => {

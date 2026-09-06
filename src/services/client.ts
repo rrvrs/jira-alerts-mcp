@@ -151,11 +151,30 @@ export class JsmClient {
 
   /** GET for endpoints returning a single object under `data`/`values`. */
   async getOne<T>(path: string, params?: Record<string, unknown>): Promise<T> {
-    const raw = await this.request<Record<string, unknown>>("GET", path, {
+    const raw = await this.request<unknown>("GET", path, {
       params,
     });
-    return (raw.data ?? raw.values ?? raw) as T;
+    return unwrapEnvelope<T>(raw);
   }
+}
+
+/**
+ * Strips the `data`/`values` envelope from a single-object response.
+ *
+ * Exported because reads are not the only callers: POST /v1/users/contacts and
+ * the PATCH, activate and deactivate endpoints beside it answer
+ * `{message, data}`, so a write that reported the body verbatim while its
+ * sibling get unwrapped it handed the model the envelope where it expected the
+ * contact — the id came back undefined and the object could not be read back.
+ * A get and its sibling write disagreeing about the envelope is the bug; one
+ * definition here is what keeps them from drifting apart again.
+ */
+export function unwrapEnvelope<T>(raw: unknown): T {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return raw as T;
+  }
+  const envelope = raw as Record<string, unknown>;
+  return (envelope.data ?? envelope.values ?? envelope) as T;
 }
 
 /**

@@ -322,7 +322,9 @@ you with fewer tools than you asked for.
 
 `core` is a frozen list of names — the surface this server had before toolsets
 existed — kept so an install that wants exactly that can ask for it without
-listing thirteen tools. `responder` is derived from its toolsets and widens as
+listing thirteen tools. It keeps those fourteen when combined: `core,schedules`
+is `core` plus every schedule tool, not both families unrestricted, so adding a
+toolset beside it cannot widen what `core` itself contributes. `responder` is derived from its toolsets and widens as
 families land, which is why it is the default: an alerts server whose alert tools
 are mostly invisible until you reconfigure it is not much use.
 

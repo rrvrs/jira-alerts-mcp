@@ -39,6 +39,32 @@ describe("maintenance windows", () => {
     assert.equal(calls[0]?.path, `/v1/teams/${TEAM}/maintenances`);
   });
 
+  it("sends the state filter it declares", async () => {
+    // It did not for a release: `type` was declared in the input shape, the
+    // description and the manifest, and dropped before the request — so a
+    // model asking which windows are open now was served expired ones too and
+    // could report a finished window as active.
+    const { client, calls } = stubClient({ items: [] });
+    const mcp = await connectTools(maintenanceWindowTools, client);
+
+    await callTool(mcp, "jsm_list_maintenances", { type: "past" });
+
+    assert.equal(calls[0]?.params?.type, "past");
+  });
+
+  it("rejects a state the API does not accept", async () => {
+    // The description used to offer 'active' as an example. The spec's enum is
+    // all | non-expired | past, so the example was never a valid value — and
+    // while the filter was being dropped, nothing ever said so.
+    const { client, calls } = stubClient({ items: [] });
+    const mcp = await connectTools(maintenanceWindowTools, client);
+
+    const result = await callTool(mcp, "jsm_list_maintenances", { type: "active" });
+
+    assert.equal(result.isError, true);
+    assert.equal(calls.length, 0, "a rejected argument must not reach the API");
+  });
+
   it("declares both endpoints it can reach", async () => {
     // The manifest has to describe the request. One tool reaching two paths
     // means two declarations, both checked against the spec.

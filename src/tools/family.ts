@@ -13,8 +13,8 @@
  * point of the whole file. A default renderer would emit JSON-shaped markdown
  * and a default description would emit the OpenAPI summary — and the
  * descriptions are the product here, because they carry what the spec does not
- * say: that writes are asynchronous, that tinyId is not an id, that API tokens
- * cannot delete. Generating prose is how that knowledge quietly stops being
+ * say: that writes are asynchronous, that tinyId is not an id, which scopes a
+ * delete needs. Generating prose is how that knowledge quietly stops being
  * written. Making it structurally mandatory is cheaper than a convention
  * everyone agrees with and nobody enforces.
  *
@@ -280,27 +280,67 @@ export function defineListOperation<T, Ctx = undefined>(
 
       // Only the offset dialect reads `offset`; sending it to an endpoint that
       // declares no paging parameters is a false statement about the endpoint,
-      // and it is the manifest — not the wire — where that does damage.
+      // and it is the manifest — not the wire — where that does damage. It is
+      // withheld from executeList too, not just from the wire: pagination
+      // reports `next_offset` whenever it knows an offset, and on an unpaged
+      // endpoint that advertises a next page which re-serves the first one.
       const dialect = paging ?? DEFAULT_DIALECT;
       const position = dialect.kind === "offset" ? { offset: typed.offset } : {};
 
       return executeList<T>({
         client,
         path: collectionPath(config, typed),
-        params: { ...position, ...(op.toParams ? op.toParams(typed) : {}) },
+        params: { ...position, ...operationParams(op, typed) },
         key: config.plural,
         context: `list ${prose(config.plural)}`,
         limit: typed.limit,
-        offset: typed.offset,
+        ...position,
         format: typed.response_format,
         render: (items) => op.render(items, context),
         emptyMessage: op.emptyMessage,
-        hint: op.hint ?? "Increase 'offset' to see the rest.",
+        hint: op.hint ?? defaultHint(dialect),
         ...(paging ? { paging } : {}),
         itemsKey: config.itemsKey,
       });
     },
   });
+}
+
+/**
+ * The query parameters a list operation sends, when it has not said how.
+ *
+ * `toParams` used to be the only route from `op.query` to the wire, so an
+ * operation that declared a filter and forgot to map it dropped it in silence:
+ * the parameter appeared in the input shape, in the description and in the
+ * endpoint manifest, and never in the request. jsm_list_maintenances shipped
+ * that way — a model asking for currently-active windows was served expired
+ * ones too. Forwarding the declared names verbatim makes the omission either
+ * correct (the input name is the API's name) or loud (check:endpoints compares
+ * the same declared names against the spec). It can no longer be quiet.
+ */
+function operationParams<T, Ctx>(
+  op: ListOp<T, Ctx>,
+  typed: Record<string, unknown>,
+): Record<string, unknown> {
+  if (op.toParams) {
+    return op.toParams(typed);
+  }
+  const params: Record<string, unknown> = {};
+  for (const name of Object.keys(op.query ?? {})) {
+    if (typed[name] !== undefined) {
+      params[name] = typed[name];
+    }
+  }
+  return params;
+}
+
+/** What to tell the model when a page was trimmed to fit the character limit. */
+function defaultHint(dialect: PagingDialect): string {
+  return dialect.kind === "offset"
+    ? "Increase 'offset' to see the rest."
+    : dialect.kind === "none"
+      ? "This endpoint returns its whole collection and cannot serve a later page; narrow the request or ask for fewer records with 'limit'."
+      : "Ask for fewer records with 'limit', or follow 'next_cursor' if the response carried one.";
 }
 
 export function defineGetOperation<T, Ctx = undefined>(
