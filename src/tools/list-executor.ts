@@ -114,6 +114,6 @@ export async function executeList<T>({
 
     return renderFormat(format, rendered.text, structured);
   } catch (error) {
-    return fail(handleApiError(error, context));
+    return fail(handleApiError(error, context, { method: "GET", path }));
   }
 }

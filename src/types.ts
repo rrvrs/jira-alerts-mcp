@@ -265,3 +265,153 @@ export interface PaginationMeta {
   truncated?: boolean;
   total?: number;
 }
+
+/** A rotation within an on-call schedule. */
+export interface Rotation {
+  id?: string;
+  name?: string;
+  startDate?: string;
+  endDate?: string;
+  /** "daily" | "weekly" | "hourly". */
+  type?: string;
+  length?: number;
+  participants?: Array<{ id?: string; type?: string }>;
+  timeRestriction?: unknown;
+}
+
+/** A one-off cover for someone else's shift. Addressed by alias, not by id. */
+export interface ScheduleOverride {
+  alias?: string;
+  responder?: { id?: string; type?: string };
+  startDate?: string;
+  endDate?: string;
+  rotationIds?: string[];
+}
+
+/** A team as GET /v1/teams reports it — note the teamId/teamName naming. */
+export interface PlatformTeam {
+  teamId?: string;
+  teamName?: string;
+}
+
+/** A role within one team, granting rights on that team's operations. */
+export interface TeamRole {
+  id?: string;
+  name?: string;
+  rights?: Array<Record<string, unknown>>;
+}
+
+/** A contact method: where one person gets notified. */
+export interface Contact {
+  id?: string;
+  /** "email" | "sms" | "voice" | "mobile". */
+  method?: string;
+  to?: string;
+  status?: { enabled?: boolean; disabledReason?: string };
+}
+
+/** A custom user role, granting rights across the site rather than per team. */
+export interface CustomUserRole {
+  id?: string;
+  name?: string;
+  grantedRights?: string[];
+  disallowedRights?: string[];
+}
+
+/** A maintenance window: a period in which named entities stop alerting. */
+export interface Maintenance {
+  id?: string;
+  status?: string;
+  description?: string;
+  startDate?: string;
+  endDate?: string;
+  time?: { type?: string; startDate?: string; endDate?: string };
+  rules?: Array<{ entity?: { id?: string; type?: string }; state?: string }>;
+}
+
+/** A heartbeat: a dead-man's switch that alerts when a ping stops arriving. */
+export interface Heartbeat {
+  name?: string;
+  description?: string;
+  interval?: number;
+  intervalUnit?: string;
+  enabled?: boolean;
+  /** "Unresponsive" | "Responsive" | "Off" | "Pending". */
+  status?: string;
+  ownerTeamId?: string;
+  alertMessage?: string;
+  alertTags?: string[];
+  alertPriority?: string;
+}
+
+/** An escalation policy: who gets woken next, and after how long. */
+export interface Escalation {
+  id?: string;
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+  rules?: Array<{
+    condition?: string;
+    notifyType?: string;
+    delay?: number;
+    recipient?: { id?: string; type?: string };
+  }>;
+  repeat?: Record<string, unknown>;
+}
+
+/** A routing rule: which alerts reach which schedule or escalation. */
+export interface RoutingRule {
+  id?: string;
+  name?: string;
+  order?: number;
+  timezone?: string;
+  criteria?: unknown;
+  notify?: { id?: string; type?: string };
+}
+
+/** A forwarding rule: one person's notifications sent to another for a period. */
+export interface ForwardingRule {
+  id?: string;
+  fromUser?: { id?: string; username?: string };
+  toUser?: { id?: string; username?: string };
+  fromUserId?: string;
+  toUserId?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+/** A notification rule: what one person is told about, and how. */
+export interface NotificationRule {
+  id?: string;
+  name?: string;
+  actionType?: string;
+  enabled?: boolean;
+  order?: number;
+  schedules?: string[];
+  steps?: NotificationRuleStep[];
+}
+
+/** One step of a notification rule: a contact and a delay. */
+export interface NotificationRuleStep {
+  id?: string;
+  enabled?: boolean;
+  sendAfter?: number;
+  contact?: { method?: string; to?: string };
+}
+
+/** An alert or notification policy: what happens to alerts before anyone sees them. */
+export interface Policy {
+  id?: string;
+  type?: string;
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+  order?: number;
+  teamId?: string;
+  filter?: Record<string, unknown>;
+  message?: string;
+  priorityValue?: string;
+  updatePriority?: boolean;
+  suppress?: boolean;
+  [key: string]: unknown;
+}

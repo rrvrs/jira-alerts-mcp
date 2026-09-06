@@ -191,7 +191,7 @@ without republishing:
 | `JSM_CLOUD_ID` | yes | Your Atlassian site's cloud id (a UUID) |
 | `JSM_EMAIL` + `JSM_API_TOKEN` | one of | [Create a token](https://id.atlassian.com/manage-profile/security/api-tokens) |
 | `JSM_OAUTH_TOKEN` | one of | OAuth 3LO bearer; takes precedence if set |
-| `JSM_TOOLSETS` | no | Which tool families to register — see [Choosing your toolsets](#choosing-your-toolsets). Unset registers `core` |
+| `JSM_TOOLSETS` | no | Which tool families to register — see [Choosing your toolsets](#choosing-your-toolsets). Unset registers `responder` |
 | `JSM_READ_ONLY` | no | `true` withholds every write tool |
 | `TRANSPORT` | no | `stdio` (default) or `http` |
 | `PORT` / `HOST` | no | HTTP transport; defaults to `127.0.0.1:3000` |
@@ -204,6 +204,41 @@ actionable message rather than on the first tool call.
 read `.env` itself — an MCP server is launched by its client, and the client owns
 the environment. Use the file as a checklist for your client's `env` block, or
 `set -a; source .env; set +a` for local development.
+
+### What your credentials can and cannot do
+
+Both auth methods are not equivalent, and the difference is not documented by
+Atlassian. Verified against a live tenant on 2026-09-05:
+
+**The delete scopes are granted per token, not per authentication method.** Two
+Atlassian account API tokens for the same account behave differently: one was
+refused on every DELETE with `401 Unauthorized; scope does not match` — valid
+credentials, missing grant — and another completed the whole set. So a 401 on a
+delete is not a reason to abandon `JSM_EMAIL` + `JSM_API_TOKEN`. Reissue the
+token with the delete scopes included, or supply a 3LO or Forge OAuth token
+granted `delete:ops-alert:jira-service-management` as `JSM_OAUTH_TOKEN`. The 401
+handler says exactly this, so the model reports it rather than retrying.
+
+The delete-backed alert tools are `jsm_delete_alert` · `jsm_delete_alert_note` ·
+`jsm_remove_alert_tags` · `jsm_remove_alert_extra_properties` ·
+`jsm_delete_alert_attachment`.
+
+**The alert attachment endpoints are gated twice over.** The API's own OpenAPI
+document maps them to no OAuth scope at all, so a token missing the delete
+scopes is turned away at the gateway with the same bare
+`scope does not match` — which reads like an auth dead end and is not one. A
+fully scoped token reaches the API and is told `Feature not available in your
+plan` instead. On a site whose plan excludes attachments, no token opens them;
+`jsm_list_alert_attachments` and `jsm_get_alert_attachment` are registered
+because they are real endpoints, and the handler reports the plan limit as a
+plan limit rather than sending you off to widen a token.
+
+**Some actions depend on your JSM plan, not on your scopes.** On a Standard
+tenant, snooze, assign and custom actions are accepted and then fail out of band
+with `Your account plan does not support …`. The request is well-formed; the
+plan is the limit. This is exactly why writes are asynchronous and why
+`jsm_get_request_status` matters — the immediate response to all three is a
+successful receipt.
 
 ### Choosing your toolsets
 
@@ -360,7 +395,166 @@ still unacknowledged, and acknowledges it again.
 | `jsm_get_schedule_timeline` | `GET /v1/schedules/{id}/timeline` | read |
 | `jsm_list_capabilities` | — (answers from configuration) | read |
 
-All of these are registered by default. Narrow the surface with `JSM_TOOLSETS`
+Schedule configuration — the `schedules` toolset, **not** registered by default:
+
+| Tool | Endpoint | Read/Write |
+|---|---|---|
+| `jsm_get_schedule` | `GET /v1/schedules/{id}` | read |
+| `jsm_create_schedule` | `POST /v1/schedules` | write |
+| `jsm_update_schedule` | `PATCH /v1/schedules/{id}` | **destructive** |
+| `jsm_delete_schedule` | `DELETE /v1/schedules/{id}` | **destructive** |
+| `jsm_list_rotations` | `GET /v1/schedules/{id}/rotations` | read |
+| `jsm_get_rotation` | `GET /v1/schedules/{id}/rotations/{id}` | read |
+| `jsm_create_rotation` | `POST /v1/schedules/{id}/rotations` | write |
+| `jsm_update_rotation` | `PATCH /v1/schedules/{id}/rotations/{id}` | **destructive** |
+| `jsm_delete_rotation` | `DELETE /v1/schedules/{id}/rotations/{id}` | **destructive** |
+| `jsm_list_overrides` | `GET /v1/schedules/{id}/overrides` | read |
+| `jsm_get_override` | `GET /v1/schedules/{id}/overrides/{alias}` | read |
+| `jsm_create_override` | `POST /v1/schedules/{id}/overrides` | write |
+| `jsm_update_override` | `PUT /v1/schedules/{id}/overrides/{alias}` | **destructive** |
+| `jsm_delete_override` | `DELETE /v1/schedules/{id}/overrides/{alias}` | **destructive** |
+
+Teams and permissions — the `teams` toolset, **not** registered by default:
+
+| Tool | Endpoint | Read/Write |
+|---|---|---|
+| `jsm_list_teams` | `GET /v1/teams` | read |
+| `jsm_list_team_roles` | `GET /v1/teams/{id}/roles` | read |
+| `jsm_get_team_role` | `GET /v1/teams/{id}/roles/{identifier}` | read |
+| `jsm_create_team_role` | `POST /v1/teams/{id}/roles` | write |
+| `jsm_update_team_role` | `PATCH /v1/teams/{id}/roles/{identifier}` | **destructive** |
+| `jsm_delete_team_role` | `DELETE /v1/teams/{id}/roles/{identifier}` | **destructive** |
+| `jsm_list_user_roles` | `GET /v1/roles` | read |
+| `jsm_get_user_role` | `GET /v1/roles/{identifier}` | read |
+| `jsm_create_user_role` | `POST /v1/roles` | write |
+| `jsm_update_user_role` | `PUT /v1/roles/{identifier}` | **destructive** |
+| `jsm_delete_user_role` | `DELETE /v1/roles/{identifier}` | **destructive** |
+| `jsm_assign_user_role` | `POST /v1/roles/assign` | **destructive** |
+| `jsm_list_contacts` | `GET /v1/users/contacts` | read |
+| `jsm_get_contact` | `GET /v1/users/contacts/{id}` | read |
+| `jsm_create_contact` | `POST /v1/users/contacts` | write |
+| `jsm_update_contact` | `PATCH /v1/users/contacts/{id}` | **destructive** |
+| `jsm_delete_contact` | `DELETE /v1/users/contacts/{id}` | **destructive** |
+| `jsm_activate_contact` | `PATCH /v1/users/contacts/{id}/activate` | write |
+| `jsm_deactivate_contact` | `PATCH /v1/users/contacts/{id}/deactivate` | **destructive** |
+
+Maintenance windows — the `maintenance` toolset, **not** registered by default:
+
+| Tool | Endpoint | Read/Write |
+|---|---|---|
+| `jsm_list_maintenances` | `GET /v1/maintenances` or `GET /v1/teams/{id}/maintenances` | read |
+| `jsm_get_maintenance` | `GET /v1/maintenances/{id}` or the team twin | read |
+| `jsm_create_maintenance` | `POST /v1/maintenances` or the team twin | write |
+| `jsm_update_maintenance` | `PATCH /v1/maintenances/{id}` or the team twin | **destructive** |
+| `jsm_delete_maintenance` | `DELETE /v1/maintenances/{id}` or the team twin | **destructive** |
+| `jsm_cancel_maintenance` | `POST /v1/maintenances/{id}/cancel` or the team twin | write |
+
+Each of these is one tool over two endpoints: pass `team_id` for a team's
+windows, omit it for site-wide ones. They are separate collections, so omitting
+`team_id` does not return both — worth knowing when you are trying to explain
+why alerting has gone quiet.
+
+Heartbeats — the `heartbeats` toolset, **not** registered by default:
+
+| Tool | Endpoint | Read/Write |
+|---|---|---|
+| `jsm_list_heartbeats` | `GET /v1/teams/{id}/heartbeats` | read |
+| `jsm_ping_heartbeat` | `GET /v1/teams/{id}/heartbeats/ping` | **destructive** |
+| `jsm_create_heartbeat` | `POST /v1/teams/{id}/heartbeats` | write |
+| `jsm_update_heartbeat` | `PATCH /v1/teams/{id}/heartbeats?name=` | **destructive** |
+| `jsm_delete_heartbeat` | `DELETE /v1/teams/{id}/heartbeats?name=` | **destructive** |
+
+Heartbeats are identified by `name` in the query string rather than by an id in
+the path — there is no item URL for them. They are a paid feature: on a plan
+without them every heartbeat endpoint answers `402 Please upgrade your pricing
+plan for Heartbeat Monitoring`, which the error handler reports as a plan limit
+rather than as something to retry. `jsm_ping_heartbeat` is marked
+destructive because sending a ping by hand asserts, on the monitored job's
+behalf, that it is alive: it resets the timer and clears a firing alert.
+
+Who gets notified — the `routing` toolset, **not** registered by default:
+
+| Tool | Endpoint | Read/Write |
+|---|---|---|
+| `jsm_list_escalations` | `GET /v1/teams/{id}/escalations` | read |
+| `jsm_get_escalation` | `GET /v1/teams/{id}/escalations/{id}` | read |
+| `jsm_create_escalation` | `POST /v1/teams/{id}/escalations` | write |
+| `jsm_update_escalation` | `PATCH /v1/teams/{id}/escalations/{id}` | **destructive** |
+| `jsm_delete_escalation` | `DELETE /v1/teams/{id}/escalations/{id}` | **destructive** |
+| `jsm_list_routing_rules` | `GET /v1/teams/{id}/routing-rules` | read |
+| `jsm_get_routing_rule` | `GET /v1/teams/{id}/routing-rules/{id}` | read |
+| `jsm_create_routing_rule` | `POST /v1/teams/{id}/routing-rules` | write |
+| `jsm_update_routing_rule` | `PATCH /v1/teams/{id}/routing-rules/{id}` | **destructive** |
+| `jsm_delete_routing_rule` | `DELETE /v1/teams/{id}/routing-rules/{id}` | **destructive** |
+| `jsm_change_routing_rule_order` | `PATCH /v1/teams/{id}/routing-rules/{id}/change-order` | **destructive** |
+| `jsm_list_forwarding_rules` | `GET /v1/forwarding-rules` | read |
+| `jsm_get_forwarding_rule` | `GET /v1/forwarding-rules/{id}` | read |
+| `jsm_create_forwarding_rule` | `POST /v1/forwarding-rules` | write |
+| `jsm_update_forwarding_rule` | `PUT /v1/forwarding-rules/{id}` | **destructive** |
+| `jsm_delete_forwarding_rule` | `DELETE /v1/forwarding-rules/{id}` | **destructive** |
+| `jsm_list_notification_rules` | `GET /v1/notification-rules` | read |
+| `jsm_get_notification_rule` | `GET /v1/notification-rules/{id}` | read |
+| `jsm_create_notification_rule` | `POST /v1/notification-rules` | write |
+| `jsm_update_notification_rule` | `PATCH /v1/notification-rules/{id}` | **destructive** |
+| `jsm_delete_notification_rule` | `DELETE /v1/notification-rules/{id}` | **destructive** |
+| `jsm_list_notification_steps` | `GET /v1/notification-rules/{id}/steps` | read |
+| `jsm_get_notification_step` | `GET /v1/notification-rules/{id}/steps/{id}` | read |
+| `jsm_create_notification_step` | `POST /v1/notification-rules/{id}/steps` | write |
+| `jsm_update_notification_step` | `PATCH /v1/notification-rules/{id}/steps/{id}` | **destructive** |
+| `jsm_delete_notification_step` | `DELETE /v1/notification-rules/{id}/steps/{id}` | **destructive** |
+
+These are the tools that change who gets paged, which is why so many of them
+carry `destructiveHint`. `jsm_change_routing_rule_order` deletes nothing and is
+marked destructive because order *is* behaviour: routing rules are evaluated top
+down and the first match wins, so moving one can silently redirect alerts that
+were reaching the right people.
+
+Notification rules belong to the account the credentials authenticate as. There
+is no parameter for reading somebody else's, so a shared token cannot answer
+"why wasn't Priya notified?" from that endpoint.
+
+Alert and notification policies — the `policies` toolset, **not** registered by
+default:
+
+| Tool | Endpoint | Read/Write |
+|---|---|---|
+| `jsm_list_alert_policies` | `GET /v1/alerts/policies` | read |
+| `jsm_list_team_policies` | `GET /v1/teams/{id}/policies` | read |
+| `jsm_get_policy` | `GET /v1/alerts/policies/{id}` or the team twin | read |
+| `jsm_create_alert_policy` | `POST /v1/alerts/policies` | write |
+| `jsm_update_alert_policy` | `PUT /v1/alerts/policies/{id}` | **destructive** |
+| `jsm_create_team_policy` | `POST /v1/teams/{id}/policies` | write |
+| `jsm_update_team_policy` | `PUT /v1/teams/{id}/policies/{id}` | **destructive** |
+| `jsm_delete_policy` | `DELETE /v1/alerts/policies/{id}` or the team twin | **destructive** |
+| `jsm_enable_policy` | `POST /v1/alerts/policies/{id}/enable` or the team twin | write |
+| `jsm_disable_policy` | `POST /v1/alerts/policies/{id}/disable` | **destructive** |
+| `jsm_change_policy_order` | `POST /v1/alerts/policies/{id}/change-order` | **destructive** |
+
+Eleven tools over sixteen endpoints. Where the global and team versions have
+identical shapes they share one tool with an optional `team_id`; where they do
+not, they stay separate — the team list *requires* a `policy_type` the global
+one does not accept, and only team policies carry `order` in the body.
+
+Policies apply in order and an alert policy with `continue_processing: false`
+stops the chain, so reordering one can silently disable every policy beneath it.
+A policy with no `filter` matches every alert. A notification policy with
+`suppress: true` means matching alerts page nobody while still appearing in the
+queue — the quietest thing configurable here, and the hardest to notice
+afterwards. All three are called out in the rendered output rather than left as
+fields to interpret.
+
+Enable them with `JSM_TOOLSETS=responder,schedules,teams`, or `JSM_TOOLSETS=admin` for
+on-call reads plus schedule and team configuration. They are separate from
+`responder` on purpose: editing a rotation or granting a role is not something a
+responder working an incident should be one tool call away from, and the write
+scopes are a different grant.
+
+`jsm_deactivate_contact` and `jsm_assign_user_role` are marked destructive
+without deleting anything. Deactivating a contact method stops a person being
+notified — silently, which is the failure mode worth prompting on — and
+assigning a role grants site-wide rights.
+
+The alert and on-call tables above are registered by default. Narrow the surface with `JSM_TOOLSETS`
 or `JSM_READ_ONLY` — see [Choosing your toolsets](#choosing-your-toolsets).
 
 `jsm_create_alert` pages people. A created alert enters the team's routing and
@@ -374,8 +568,9 @@ Tools marked **destructive** carry `destructiveHint: true`, which is what MCP
 clients read to decide whether to prompt before running something. They are
 registered like any other tool — the annotation is the guardrail, not absence —
 and several of them need `delete:ops-alert:jira-service-management`, a separate
-grant from `write:ops-alert`. A token that can close alerts usually cannot delete
-them, and that is a sensible configuration rather than something to work around.
+grant from `write:ops-alert`. A token that can close alerts may well not be able
+to delete them, and that is a sensible configuration rather than something to
+work around.
 
 `jsm_delete_alert` is included and is almost never the right tool. Closing an
 alert takes it out of the open queue and keeps the record of who was paged and
@@ -409,6 +604,17 @@ tool descriptions, where the model will actually read it:
 3. **The search window caps at 20,000.** `offset + limit` must stay under it.
    `jsm_list_alerts` rejects deeper paging locally with a message telling the
    model to narrow the query instead of burning a round trip on a guaranteed 400.
+
+4. **Alert actions take no actor or note.** Opsgenie accepted `user`, `source`
+   and `note` alongside an acknowledge or a close, and JSM Operations is an
+   Opsgenie rehost — but it declares no request body for those endpoints and
+   discards the fields silently. Acknowledging with a note and reading the
+   activity log back shows neither the note nor the actor. So these tools do not
+   offer the parameters at all: a rejected argument is a fact the model can act
+   on, where an ignored one looks like a recorded decision that has actually
+   vanished. To leave a durable note, call `jsm_add_alert_note`. `jsm_create_alert`
+   *does* take `note` and `source`, because `CreateAlertRequest` declares both
+   and the API honours them — also verified.
 
 ---
 

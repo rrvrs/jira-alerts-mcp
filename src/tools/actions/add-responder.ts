@@ -12,9 +12,7 @@ export const addAlertResponder = defineTool({
   endpoint: {
     method: "POST",
     path: "/v1/alerts/{id}/responders",
-    body: ["id", "type", "user", "source", "note"],
-    // The spec declares only id and type. Opsgenie parity for the rest.
-    allowUnknownBody: ["user", "source", "note"],
+    body: ["id", "type"],
   },
   title: "Add a responder to a JSM alert",
   description: `Add a responder (user, team, escalation or schedule) to an existing JSM alert so they are notified and become accountable for it.
@@ -25,9 +23,6 @@ Args:
   - alert_id (string): the full alert id (not the tinyId)
   - responder_id (string): id of the user/team/escalation/schedule to add
   - responder_type ('user' | 'team' | 'escalation' | 'schedule'): what responder_id refers to
-  - note (string, optional): note recorded with the change
-  - user (string, optional): actor name/email; defaults to the credential owner
-  - source (string, optional): source label for the activity log
 
 Returns: { "requestId": string, "result": string, "alert_id": string }
 
@@ -50,8 +45,5 @@ Error handling:
     alertAction(client, "Add responder", params.alert_id, "responders", {
       id: params.responder_id,
       type: params.responder_type,
-      user: params.user,
-      source: params.source,
-      note: params.note,
     }),
 });

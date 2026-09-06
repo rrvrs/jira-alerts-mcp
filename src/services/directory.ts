@@ -17,6 +17,7 @@ import axios from "axios";
 
 import { IDENTITY_CACHE_MAX, USER_LOOKUP_BATCH } from "../constants.js";
 import type { JsmClient } from "./client.js";
+import { createNameCache, createSingletonCache } from "./name-cache.js";
 import type { ResolvedIdentity } from "../types.js";
 
 interface JiraUser {
@@ -47,19 +48,18 @@ export interface Directory {
  * Process-wide cache. Display names change far more slowly than a session
  * lasts, and the same rotation gets asked about repeatedly during an incident.
  */
-const userCache = new Map<string, ResolvedIdentity>();
-let teamCache: Map<string, string> | undefined;
+const userCache = createNameCache<ResolvedIdentity>(IDENTITY_CACHE_MAX);
+const teamCache = createSingletonCache<Map<string, string>>();
 
-/** Keeps the cache bounded without pulling in an LRU dependency. */
+/** The cache bounds itself; this stays as the single write point. */
 function remember(id: string, value: ResolvedIdentity): void {
-  if (userCache.size >= IDENTITY_CACHE_MAX) userCache.clear();
   userCache.set(id, value);
 }
 
 /** Exposed for tests: a cached name from a previous case must not leak into the next. */
 export function clearDirectoryCache(): void {
   userCache.clear();
-  teamCache = undefined;
+  teamCache.clear();
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -151,15 +151,25 @@ export async function resolveUsers(client: JsmClient, ids: string[]): Promise<Di
  * holds, so unlike the user lookup this needs no extra grant.
  */
 export async function resolveTeams(client: JsmClient): Promise<Map<string, string>> {
-  if (teamCache) return teamCache;
+  const cached = teamCache.get();
+  if (cached) return cached;
 
   try {
-    const response = await client.getOne<{ platformTeams?: PlatformTeam[] }>("/v1/teams");
+    // Two shapes are in play. The spec declares ListPlatformTeamResponse —
+    // `{platformTeams: [...]}` — but a live site answered this path with a
+    // bare JSON array on 2026-09-05, checked against two separate credentials.
+    // getCollection already accepts both; this call does not go through it,
+    // and reading only the documented key turned every team name on the
+    // on-call output back into a raw uuid without failing.
+    const response = await client.getOne<{ platformTeams?: PlatformTeam[] } | PlatformTeam[]>(
+      "/v1/teams",
+    );
+    const list = Array.isArray(response) ? response : (response.platformTeams ?? []);
     const teams = new Map<string, string>();
-    for (const team of response.platformTeams ?? []) {
+    for (const team of list) {
       if (team.teamId && team.teamName) teams.set(team.teamId, team.teamName);
     }
-    teamCache = teams;
+    teamCache.set(teams);
     return teams;
   } catch {
     // Same rule as above: a missing team name must not cost the caller the answer.

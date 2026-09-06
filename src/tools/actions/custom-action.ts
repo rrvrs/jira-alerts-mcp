@@ -12,10 +12,7 @@ export const executeAlertAction = defineTool({
   endpoint: {
     method: "POST",
     path: "/v1/alerts/{id}/action",
-    body: ["actionName", "user", "source", "note"],
-    // Only actionName is declared. Opsgenie parity for the actor fields — see
-    // acknowledge.ts.
-    allowUnknownBody: ["user", "source", "note"],
+    body: ["actionName"],
   },
   title: "Run a custom action on a JSM alert",
   description: `Run one of your organisation's own custom alert actions — the buttons a team wires up on an integration, like "Restart service" or "Roll back deploy".
@@ -25,9 +22,6 @@ What these do is entirely up to whoever configured them, and this server cannot 
 Args:
   - alert_id (string): the full alert id (not the tinyId)
   - action_name (string): the configured action's name, exactly as configured
-  - note (string, optional): note recorded with the action
-  - user (string, optional): actor name/email; defaults to the credential owner
-  - source (string, optional): source label for the activity log
 
 Returns: { "requestId": string, "result": string, "alert_id": string }
 
@@ -49,8 +43,5 @@ Constraints and errors:
   handler: async (params, client) =>
     alertAction(client, `Run action '${params.action_name}'`, params.alert_id, "action", {
       actionName: params.action_name,
-      user: params.user,
-      source: params.source,
-      note: params.note,
     }),
 });

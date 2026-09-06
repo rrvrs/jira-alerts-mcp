@@ -107,7 +107,9 @@ Error handling:
       if (error instanceof ScheduleLookupError) {
         return fail(`Error (get schedule timeline): ${error.message}`);
       }
-      return fail(handleApiError(error, "get schedule timeline"));
+      return fail(
+        handleApiError(error, "get schedule timeline", { method: "GET", path: "/v1/schedules" }),
+      );
     }
   },
 });

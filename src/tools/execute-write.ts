@@ -21,6 +21,7 @@ import {
   fail,
   ok,
   renderAsyncReceipt,
+  renderConfirmed,
   renderDeleted,
   type ToolResult,
 } from "../services/format.js";
@@ -32,12 +33,31 @@ export type WriteMode =
   /** The response body is the updated object. */
   | "sync"
   /** 204 with no body. */
-  | "deleted";
+  | "deleted"
+  /**
+   * 204 with no body, on an endpoint that did not delete anything.
+   *
+   * Split from "deleted" because the structured payload is read by a model:
+   * reporting `deleted: true` after reordering a routing rule is how a caller
+   * ends up telling someone the rule was removed. The reorder endpoints are
+   * the ones this exists for — they answer 204, and declaring the updated
+   * object as their output made every call fail output validation with
+   * "expected object, received string", which is what an empty body
+   * deserialises to.
+   */
+  | "confirmed";
 
 export interface WriteOptions<T> {
   /** Human label for the action, used in the receipt and in error messages. */
   label: string;
-  method: "POST" | "PUT" | "PATCH" | "DELETE";
+  /**
+   * GET is here for exactly one endpoint: the heartbeat ping,
+   * GET /v1/teams/{teamId}/heartbeats/ping, which mutates state — it resets
+   * the timer and clears a firing alert. It is a write however it is spelled,
+   * and routing it through here is what keeps its annotations and its error
+   * handling consistent with every other write.
+   */
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** The full path below the cloud-id root, e.g. "/v1/alerts/{id}/snooze". */
   path: string;
   body?: unknown;
@@ -51,13 +71,22 @@ export interface WriteOptions<T> {
   subject?: { key: string; value?: string | undefined; noun: string };
   /** Required for mode "sync": renders the object the API returned. */
   render?: (data: T) => string;
+  /**
+   * Optional for mode "sync": builds the structured payload from the response.
+   * The default spreads the response's own fields alongside the subject, which
+   * suits a tool whose output schema names those fields. A tool that reports
+   * the object under a single key — as the resource factory's create and update
+   * do, to match its get — needs to say so, or the SDK rejects the result
+   * against its own declared output schema.
+   */
+  structured?: (data: T) => Record<string, unknown>;
 }
 
 export async function executeWrite<T>(
   client: JsmClient,
   options: WriteOptions<T>,
 ): Promise<ToolResult> {
-  const { label, method, path, body, params, mode, subject, render } = options;
+  const { label, method, path, body, params, mode, subject, render, structured } = options;
   const subjectFields =
     subject && subject.value !== undefined ? { [subject.key]: subject.value } : {};
 
@@ -71,6 +100,10 @@ export async function executeWrite<T>(
       return renderDeleted(label, subject);
     }
 
+    if (mode === "confirmed") {
+      return renderConfirmed(label, subject);
+    }
+
     if (mode === "sync") {
       if (!render) {
         // A programming error, not a user-facing one — but returning it as a
@@ -80,7 +113,11 @@ export async function executeWrite<T>(
       }
       return ok(render(response), {
         ...subjectFields,
-        ...(response && typeof response === "object" ? (response as Record<string, unknown>) : {}),
+        ...(structured
+          ? structured(response)
+          : response && typeof response === "object"
+            ? (response as Record<string, unknown>)
+            : {}),
       });
     }
 
@@ -94,6 +131,6 @@ export async function executeWrite<T>(
       },
     );
   } catch (error) {
-    return fail(handleApiError(error, label.toLowerCase()));
+    return fail(handleApiError(error, label.toLowerCase(), { method, path }));
   }
 }

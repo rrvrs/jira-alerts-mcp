@@ -12,10 +12,7 @@ export const snoozeAlert = defineTool({
   endpoint: {
     method: "POST",
     path: "/v1/alerts/{id}/snooze",
-    body: ["endTime", "user", "source", "note"],
-    // Only endTime is declared. Opsgenie parity for the actor fields — see
-    // acknowledge.ts.
-    allowUnknownBody: ["user", "source", "note"],
+    body: ["endTime"],
   },
   title: "Snooze a JSM alert until a given time",
   description: `Silence a JSM alert's notifications until a specific instant, after which it resumes as if untouched.
@@ -25,9 +22,6 @@ Snoozing is the right tool for "we know, and there is nothing to do until the ma
 Args:
   - alert_id (string): the full alert id (not the tinyId)
   - end_time (string): ISO 8601 instant with an offset, e.g. "2026-09-05T18:30:00Z"
-  - note (string, optional): why it is being snoozed
-  - user (string, optional): actor name/email; defaults to the credential owner
-  - source (string, optional): source label for the activity log
 
 Returns: { "requestId": string, "result": string, "alert_id": string }
 
@@ -52,8 +46,5 @@ Constraints and errors:
   handler: async (params, client) =>
     alertAction(client, "Snooze", params.alert_id, "snooze", {
       endTime: params.end_time,
-      user: params.user,
-      source: params.source,
-      note: params.note,
     }),
 });

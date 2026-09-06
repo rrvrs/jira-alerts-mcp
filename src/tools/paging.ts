@@ -58,3 +58,26 @@ export function pageSizeParams(dialect: PagingDialect, limit: number): Record<st
 export function isUnpaged(dialect: PagingDialect): boolean {
   return dialect.kind === "none";
 }
+
+/**
+ * The query parameter names a dialect actually puts on the wire.
+ *
+ * Used to build the endpoint manifest, so a tool cannot declare `size` and
+ * `offset` against an endpoint that takes neither. The drift guard caught
+ * exactly that on GET /v1/teams: the handler correctly sent nothing and the
+ * manifest claimed two parameters the spec does not declare.
+ */
+export function pagingQueryNames(dialect: PagingDialect): string[] {
+  switch (dialect.kind) {
+    case "offset":
+      return ["size", "offset"];
+    case "cursor":
+      return ["size", "after"];
+    case "token":
+      return ["limit", "pageToken"];
+    case "sizeOnly":
+      return ["size"];
+    case "none":
+      return [];
+  }
+}

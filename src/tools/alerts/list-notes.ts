@@ -8,7 +8,8 @@ import { renderNotes } from "../../services/format.js";
 import type { AlertNote } from "../../types.js";
 import { defineTool } from "../define.js";
 import { executeList } from "../list-executor.js";
-import { alertTimelineShape, paginationOutputShape } from "./shapes.js";
+import { paginationOutputShape } from "../../schemas/common.js";
+import { alertTimelineShape } from "./shapes.js";
 
 export const listAlertNotes = defineTool({
   name: "jsm_list_alert_notes",

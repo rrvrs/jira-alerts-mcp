@@ -18,9 +18,6 @@ export const deleteAlert = defineTool({
   endpoint: {
     method: "DELETE",
     path: "/v1/alerts/{id}",
-    body: ["user", "source", "note"],
-    // The spec declares no request body. Opsgenie parity — see acknowledge.ts.
-    allowUnknownBody: ["user", "source", "note"],
   },
   title: "Permanently delete a JSM alert",
   description: `Permanently delete a JSM alert and everything recorded on it.
@@ -31,9 +28,6 @@ The cases that justify it are narrow: an alert containing credentials or persona
 
 Args:
   - alert_id (string): the full alert id (not the tinyId)
-  - note (string, optional): note recorded with the deletion
-  - user (string, optional): actor name/email; defaults to the credential owner
-  - source (string, optional): source label for the activity log
 
 Returns: { "requestId": string, "result": string, "alert_id": string }
 
@@ -58,7 +52,6 @@ Constraints and errors:
       label: "Delete alert",
       method: "DELETE",
       path: `/v1/alerts/${encodeURIComponent(params.alert_id)}`,
-      body: { user: params.user, source: params.source, note: params.note },
       mode: "async",
       subject: { key: "alert_id", value: params.alert_id, noun: "alert" },
     }),

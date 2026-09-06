@@ -189,6 +189,24 @@ export function renderDeleted(
   });
 }
 
+/**
+ * Confirms a 204 that changed something without removing it.
+ *
+ * Deliberately not renderDeleted with a different word: the structured payload
+ * carries `confirmed`, not `deleted`, because a model reading `deleted: true`
+ * after a reorder will say the thing was deleted.
+ */
+export function renderConfirmed(
+  label: string,
+  subject?: { key: string; value?: string | undefined; noun: string },
+): ToolResult {
+  const target = subject?.value ? ` for ${subject.noun} \`${subject.value}\`` : "";
+  return ok(`${label} succeeded${target}. The API confirmed it with no response body.`, {
+    confirmed: true,
+    ...(subject?.value !== undefined ? { [subject.key]: subject.value } : {}),
+  });
+}
+
 function timestamp(value?: string): string {
   if (!value) return "unknown";
   const parsed = new Date(value);
@@ -639,15 +657,24 @@ export function renderAsyncReceipt(
   // A create has no id yet — the receipt is all there is until the request
   // resolves — so say "a new alert" rather than printing an empty backtick pair.
   const target = subject.id ? `${subject.noun} \`${subject.id}\`` : `a new ${subject.noun}`;
+  // Not every async endpoint returns a request id: POST /v1/alerts/{id}/notes
+  // answers `{result: "queued"}` and nothing else, verified against a live
+  // tenant. Printing "Request id: not returned" and then telling the model to
+  // confirm "using the request id above" sends it to call
+  // jsm_get_request_status with the literal string "not returned".
+  const followUp = response.requestId
+    ? "Confirm with jsm_get_request_status using the request id above, or re-read the " +
+      `${subject.noun} after a moment.`
+    : `This endpoint returned no request id to poll, so re-read the ${subject.noun} after a ` +
+      "moment to confirm the change landed.";
   return [
     `${action} request accepted for ${target}.`,
     "",
-    `- **Request id**: \`${response.requestId ?? "not returned"}\``,
+    ...(response.requestId ? [`- **Request id**: \`${response.requestId}\``] : []),
     `- **Result**: ${response.result ?? "queued"}`,
     "",
     `JSM applies these actions asynchronously, so the ${subject.noun} may not reflect this change ` +
-      "immediately. Confirm with jsm_get_request_status using the request id above, or re-read the " +
-      `${subject.noun} after a moment.`,
+      `immediately. ${followUp}`,
   ].join("\n");
 }
 

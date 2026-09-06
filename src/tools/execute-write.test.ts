@@ -102,18 +102,36 @@ describe("executeWrite — async mode", () => {
     });
   });
 
-  it("sends the note and actor in the body, not the query string", async () => {
+  it("sends an empty body on the actions that declare none, and no query string", async () => {
     const { client, calls } = stubClient({ items: [] }, { write: { requestId: "r" } });
     const mcp = await connectTools(alertActionTools, client);
 
-    await callTool(mcp, "jsm_close_alert", {
+    await callTool(mcp, "jsm_close_alert", { alert_id: ALERT_ID });
+
+    assert.deepEqual(calls[0]?.body, {});
+    assert.equal(calls[0]?.params, undefined);
+  });
+
+  it("rejects note/user/source rather than sending fields the API discards", async () => {
+    // These three used to be accepted here on Opsgenie-parity grounds. Checked
+    // against a live tenant on 2026-09-05: acknowledging with all three and
+    // reading the activity log back showed neither the note nor the actor. The
+    // spec agrees — close declares no request body at all. Silently dropping
+    // them would let a model believe it had recorded a resolution note; the
+    // strict shape makes it an immediate, visible error instead, and the
+    // description points at jsm_add_alert_note.
+    const { client, calls } = stubClient({ items: [] }, { write: { requestId: "r" } });
+    const mcp = await connectTools(alertActionTools, client);
+
+    const result = await callTool(mcp, "jsm_close_alert", {
       alert_id: ALERT_ID,
       note: "resolved",
       user: "RVS",
     });
 
-    assert.deepEqual(calls[0]?.body, { user: "RVS", source: undefined, note: "resolved" });
-    assert.equal(calls[0]?.params, undefined);
+    assert.equal(result.isError, true);
+    assert.match(textOf(result), /Unrecognized keys.*note.*user/s);
+    assert.equal(calls.length, 0, "nothing should reach the API");
   });
 
   it("percent-encodes the alert id into the path", async () => {

@@ -25,7 +25,17 @@
 import type { AnyToolDefinition } from "./tools/define.js";
 
 /** Every toolset that ships tools today. */
-export const TOOLSETS = ["alerts", "alert-actions", "oncall"] as const;
+export const TOOLSETS = [
+  "alerts",
+  "alert-actions",
+  "oncall",
+  "schedules",
+  "teams",
+  "maintenance",
+  "heartbeats",
+  "routing",
+  "policies",
+] as const;
 
 export type ToolsetName = (typeof TOOLSETS)[number];
 
@@ -58,6 +68,30 @@ export const TOOLSET_INFO: Record<ToolsetName, ToolsetInfo> = {
   oncall: {
     summary: "On-call: schedule discovery, who is on call now and next, shift timelines.",
     scopes: ["read:ops-config:jira-service-management"],
+  },
+  schedules: {
+    summary: "Schedule configuration: schedules, rotations and overrides — create, edit, delete.",
+    scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
+  },
+  teams: {
+    summary: "Teams and permissions: team discovery, team roles, user roles, contact methods.",
+    scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
+  },
+  maintenance: {
+    summary: "Maintenance windows: silence integrations, policies and syncs for a period.",
+    scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
+  },
+  heartbeats: {
+    summary: "Heartbeats: dead-man's switches that alert when an expected ping stops arriving.",
+    scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
+  },
+  routing: {
+    summary: "Who gets notified: escalations, routing rules, forwarding rules, notification rules.",
+    scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
+  },
+  policies: {
+    summary: "Alert and notification policies: rewrite, delay or suppress alerts as they arrive.",
+    scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
   },
 };
 
@@ -103,6 +137,13 @@ export const CORE_TOOL_NAMES = [
 export const PROFILES = {
   responder: { toolsets: ["alerts", "alert-actions", "oncall"] },
   core: { toolsets: ["alerts", "alert-actions", "oncall"], only: CORE_TOOL_NAMES },
+  // Configuration families, for someone setting up rotations rather than
+  // working an incident. Deliberately separate from `responder`: editing a
+  // schedule mid-page is not a thing a responder should be one tool call away
+  // from, and the write scopes are a different grant.
+  admin: {
+    toolsets: ["oncall", "schedules", "teams", "maintenance", "heartbeats", "routing", "policies"],
+  },
   all: { toolsets: TOOLSETS },
 } as const satisfies Record<string, { toolsets: readonly ToolsetName[]; only?: readonly string[] }>;
 

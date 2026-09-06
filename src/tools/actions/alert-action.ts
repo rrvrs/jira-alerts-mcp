@@ -20,7 +20,11 @@ export function alertAction(
   label: string,
   alertId: string,
   action: string,
-  body: Record<string, unknown>,
+  // Defaulted, because acknowledge, unacknowledge and close declare no request
+  // body at all. They already sent `{}` on the wire — the actor fields they
+  // used to carry were always undefined unless the caller set them, and
+  // JSON.stringify drops those — so this changes the payload for nobody.
+  body: Record<string, unknown> = {},
   method: "POST" | "PATCH" | "DELETE" = "POST",
 ): Promise<ToolResult> {
   return executeWrite(client, {

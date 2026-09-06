@@ -653,8 +653,14 @@ describe("renderAsyncReceipt", () => {
   });
 
   it("degrades gracefully when the API omits the receipt fields", () => {
+    // POST /v1/alerts/{id}/notes really does answer without a request id,
+    // verified against a live tenant. Naming a request id that does not exist
+    // and then pointing at jsm_get_request_status sends the model to poll the
+    // literal string it was shown, so the pointer has to disappear with it.
     const text = renderAsyncReceipt("Close", { noun: "alert", id: baseAlert.id }, {});
-    assert.match(text, /not returned/);
+    assert.doesNotMatch(text, /Request id/);
+    assert.doesNotMatch(text, /jsm_get_request_status/);
+    assert.match(text, /re-read the alert/);
     assert.match(text, /queued/);
   });
 });

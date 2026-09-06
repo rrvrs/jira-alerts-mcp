@@ -12,10 +12,7 @@ export const assignAlert = defineTool({
   endpoint: {
     method: "POST",
     path: "/v1/alerts/{id}/assign",
-    body: ["accountId", "user", "source", "note"],
-    // Only accountId is declared. Opsgenie parity for the actor fields — see
-    // acknowledge.ts.
-    allowUnknownBody: ["user", "source", "note"],
+    body: ["accountId"],
   },
   title: "Assign a JSM alert to a person",
   description: `Make one person the owner of a JSM alert, so it is clear who is working it.
@@ -25,9 +22,6 @@ Assigning names an owner; jsm_add_alert_responder adds people to notify without 
 Args:
   - alert_id (string): the full alert id (not the tinyId)
   - account_id (string): Atlassian account id of the assignee
-  - note (string, optional): note recorded with the assignment
-  - user (string, optional): actor name/email; defaults to the credential owner
-  - source (string, optional): source label for the activity log
 
 Returns: { "requestId": string, "result": string, "alert_id": string }
 
@@ -51,8 +45,5 @@ Constraints and errors:
   handler: async (params, client) =>
     alertAction(client, "Assign", params.alert_id, "assign", {
       accountId: params.account_id,
-      user: params.user,
-      source: params.source,
-      note: params.note,
     }),
 });

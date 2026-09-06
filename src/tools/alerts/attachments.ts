@@ -18,7 +18,7 @@ import {
 import type { AlertAttachment } from "../../types.js";
 import { defineTool } from "../define.js";
 import { executeList } from "../list-executor.js";
-import { paginationOutputShape } from "./shapes.js";
+import { paginationOutputShape } from "../../schemas/common.js";
 
 export const listAlertAttachments = defineTool({
   name: "jsm_list_alert_attachments",
@@ -148,7 +148,12 @@ Constraints and errors:
         structured,
       );
     } catch (error) {
-      return fail(handleApiError(error, "get alert attachment"));
+      return fail(
+        handleApiError(error, "get alert attachment", {
+          method: "GET",
+          path: "/v1/alerts/{id}/attachments/{attachmentId}",
+        }),
+      );
     }
   },
 });

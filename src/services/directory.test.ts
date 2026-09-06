@@ -165,6 +165,20 @@ describe("resolveIdentities", () => {
     assert.equal(directory.names.get("t1")?.displayName, "Payments");
   });
 
+  it("resolves team names when /v1/teams answers with a bare array", async () => {
+    // The spec declares {platformTeams: [...]}; a live site answered with a
+    // bare array. Reading only the documented key left every team on the
+    // on-call output showing a raw uuid, and nothing failed.
+    const { client } = fakeClient({
+      jira: { values: [] },
+      teams: [{ teamId: "t1", teamName: "Payments" }],
+    });
+
+    const directory = await resolveIdentities(client, [{ id: "t1", type: "team" }]);
+
+    assert.equal(directory.names.get("t1")?.displayName, "Payments");
+  });
+
   it("treats an untyped id as a user, which is what a flat on-call list holds", async () => {
     const { client, calls } = fakeClient({ jira: { values: [] } });
 

@@ -4,13 +4,26 @@
 
 import { z } from "zod";
 
-import { alertIdField, noteField, sourceField, userField } from "../../schemas/common.js";
+import { alertIdField, noteField, sourceField } from "../../schemas/common.js";
 
-/** Fields shared by every alert action. */
+/**
+ * Fields shared by every alert action — which is now just the id.
+ *
+ * `user`, `source` and `note` used to live here on Opsgenie-parity grounds,
+ * because JSM Operations is a rehost and Opsgenie accepted them. Checked
+ * against a live tenant on 2026-09-05: they are accepted and then silently
+ * discarded. Acknowledging with note/user/source and reading the activity log
+ * back showed neither the note nor the actor — the log recorded the credential
+ * owner and `customSource[api]`, exactly as it does without them. The OpenAPI
+ * spec agrees: not one alert action endpoint declares any of the three, and
+ * acknowledge, unacknowledge and close declare no request body at all.
+ *
+ * An optional parameter that does nothing is worse than a missing one. A model
+ * told `note` records "why" will use it to record why, and that reasoning
+ * disappears. To leave a durable note, call jsm_add_alert_note.
+ */
 const actionBaseShape = {
   alert_id: alertIdField,
-  user: userField,
-  source: sourceField,
 };
 
 /**
@@ -23,28 +36,13 @@ export const asyncOutputSchema = {
   alert_id: z.string(),
 };
 
-export const acknowledgeShape = {
-  ...actionBaseShape,
-  note: z
-    .string()
-    .max(25_000)
-    .optional()
-    .describe("Optional note recorded alongside the acknowledgement."),
-};
+export const acknowledgeShape = { ...actionBaseShape };
 
-export const closeShape = {
-  ...actionBaseShape,
-  note: z
-    .string()
-    .max(25_000)
-    .optional()
-    .describe(
-      "Optional note explaining the resolution. Strongly recommended — it's the record future responders will read.",
-    ),
-};
+export const closeShape = { ...actionBaseShape };
 
 export const addNoteShape = {
   ...actionBaseShape,
+  // The one place `note` is real: it is this endpoint's declared request body.
   note: noteField,
 };
 
@@ -57,7 +55,6 @@ export const addResponderShape = {
   responder_type: z
     .enum(["user", "team", "escalation", "schedule"])
     .describe("What kind of entity responder_id refers to."),
-  note: z.string().max(25_000).optional().describe("Optional note recorded with the change."),
 };
 
 /** Responder reference, as every alert endpoint that takes one spells it. */
@@ -143,14 +140,7 @@ export const createOutputSchema = {
   alias: z.string().optional(),
 };
 
-export const unacknowledgeShape = {
-  ...actionBaseShape,
-  note: z
-    .string()
-    .max(25_000)
-    .optional()
-    .describe("Optional note explaining why the acknowledgement is being taken back."),
-};
+export const unacknowledgeShape = { ...actionBaseShape };
 
 export const snoozeShape = {
   ...actionBaseShape,
@@ -161,7 +151,6 @@ export const snoozeShape = {
       "When the snooze ends, as an ISO 8601 instant with an offset, e.g. '2026-09-05T18:30:00Z'. " +
         "Must be in the future — a past instant is accepted and the alert un-snoozes immediately.",
     ),
-  note: z.string().max(25_000).optional().describe("Optional note recorded with the snooze."),
 };
 
 export const assignShape = {
@@ -174,7 +163,6 @@ export const assignShape = {
         "NOT a display name — both are rejected. Account ids appear in jsm_get_alert's responder " +
         "and owner fields and in jsm_get_on_call.",
     ),
-  note: z.string().max(25_000).optional().describe("Optional note recorded with the assignment."),
 };
 
 export const escalateShape = {
@@ -186,7 +174,6 @@ export const escalateShape = {
       "Id of the escalation policy to escalate through. This is an escalation id, not a team or " +
         "schedule id — the three are separate objects with separate ids.",
     ),
-  note: z.string().max(25_000).optional().describe("Optional note recorded with the escalation."),
 };
 
 export const updateFieldShape = {
@@ -238,21 +225,14 @@ export const deletedOutputSchema = {
   note_id: z.string().optional(),
 };
 
-/** Optional note, shared by the tag and extra-property tools. */
-const changeNoteField = z
-  .string()
-  .max(25_000)
-  .optional()
-  .describe("Optional note recorded with the change.");
-
 const tagsField = z
   .array(z.string().min(1))
   .min(1, "pass at least one tag")
   .describe("Tag names. Case-sensitive, and matched exactly on removal.");
 
-export const addTagsShape = { ...actionBaseShape, tags: tagsField, note: changeNoteField };
+export const addTagsShape = { ...actionBaseShape, tags: tagsField };
 
-export const removeTagsShape = { ...actionBaseShape, tags: tagsField, note: changeNoteField };
+export const removeTagsShape = { ...actionBaseShape, tags: tagsField };
 
 export const addExtraPropertiesShape = {
   ...actionBaseShape,
@@ -262,7 +242,6 @@ export const addExtraPropertiesShape = {
       "Key/value context to attach, e.g. {'runbook': 'https://…', 'region': 'us-east-1'}. " +
         "A key that already exists is overwritten.",
     ),
-  note: changeNoteField,
 };
 
 export const removeExtraPropertiesShape = {
@@ -271,13 +250,9 @@ export const removeExtraPropertiesShape = {
     .array(z.string().min(1))
     .min(1, "pass at least one key")
     .describe("Property keys to remove. Keys, not values."),
-  note: changeNoteField,
 };
 
-export const deleteAlertShape = {
-  ...actionBaseShape,
-  note: changeNoteField,
-};
+export const deleteAlertShape = { ...actionBaseShape };
 
 export const customActionShape = {
   ...actionBaseShape,
@@ -289,5 +264,4 @@ export const customActionShape = {
         "unrecognised name is accepted and then does nothing. Ask the user what actions exist rather " +
         "than guessing a plausible one.",
     ),
-  note: changeNoteField,
 };

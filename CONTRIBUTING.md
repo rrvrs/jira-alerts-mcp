@@ -55,7 +55,9 @@ The vendored spec is a CI input, not a runtime dependency: `package.json` `files
 Two things the check cannot settle, both recorded in the code as `allowUnknownQuery` / `allowUnknownBody` with the reasoning inline:
 
 - **`order` on `GET /v1/alerts/{id}/notes` and `/logs`.** The spec declares only `after` and `size`. Opsgenie accepted `order` and JSM Operations is a rehost of it, so the tools still send it — but if a tenant returns newest-first regardless, drop it from the shape *and* the description rather than leaving both promising something the API does not do.
-- **`user` / `source` / `note` on the alert action endpoints.** The spec declares no request body at all for `acknowledge` and `close`, and only `note` for `notes`. Same Opsgenie-parity reasoning. Confirm on a tenant by acknowledging with a note and reading the activity log back.
+**Settled on 2026-09-05, against a live tenant — do not re-add:** `user` / `source` / `note` on the alert action endpoints. The check was the one described here: acknowledge with all three, then read the activity log back. Neither the note nor the actor appeared; the log recorded the credential owner and `customSource[api]`, exactly as it does without them. The spec agrees — no alert action endpoint declares any of the three. They are gone from the shapes, and the strict input schema now rejects them outright, which is the point: an ignored argument looks to a model like a recorded decision. `jsm_create_alert` keeps `note` and `source` because `CreateAlertRequest` declares both and the tenant honours them.
+
+Adding a parameter on Opsgenie-parity grounds is still reasonable when the spec is thin — but record it as `allowUnknownBody` with the tenant check that would settle it, and go run that check before the tool ships to anyone.
 
 Neither allowance is free: the check also fails when the spec *does* declare an allowed name, so a stale allowance has to be removed rather than accumulating into noise.
 

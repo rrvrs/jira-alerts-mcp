@@ -115,7 +115,7 @@ Error handling:
     } catch (error) {
       if (error instanceof ScheduleLookupError)
         return fail(`Error (get on-call): ${error.message}`);
-      return fail(handleApiError(error, "get on-call"));
+      return fail(handleApiError(error, "get on-call", { method: "GET", path: "/v1/schedules" }));
     }
   },
 });
