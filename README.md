@@ -504,24 +504,47 @@ server will not reach your data; one of the Opsgenie servers above will, until
 ```
 src/
 ├── index.ts                 # transports and startup credential validation
-├── server.ts                # assembles the tool domains
+├── server.ts                # assembles the catalogue from the eight families
+├── toolsets.ts              # toolsets, profiles, and selection resolution
 ├── constants.ts             # API root, limits
 ├── types.ts                 # JSM API interfaces
-├── schemas/common.ts        # Zod fragments shared across domains
+├── schemas/common.ts        # Zod fragments shared across families
 ├── services/
 │   ├── client.ts            # auth, request, envelope normalisation, error mapping
-│   └── format.ts            # markdown rendering, truncation, result envelopes
+│   ├── directory.ts         # resolves bare Atlassian ids to names
+│   ├── name-cache.ts        # one registry for every process-wide cache
+│   ├── format.ts            # markdown rendering, truncation, result envelopes
+│   └── render/              # per-family renderers
 └── tools/
     ├── define.ts            # defineTool() + registerTools()
+    ├── family.ts            # the resource-family factory
+    ├── execute-write.ts     # the shared write executor
     ├── list-executor.ts     # the shared list pipeline
-    ├── alerts/              # read tools — one file per tool, plus shapes.ts
-    ├── actions/             # write tools, all via execute-action.ts
-    └── oncall/              # schedules and on-call
+    ├── paging.ts            # the paging dialects each endpoint wants
+    ├── capabilities.ts      # jsm_list_capabilities
+    ├── test-support.ts      # stub client and in-memory MCP harness
+    ├── alerts/              # alert reads
+    ├── actions/             # alert writes
+    ├── oncall/              # who is on call now and next
+    ├── schedules/           # schedules, rotations, overrides
+    ├── teams/               # teams, roles, contact methods
+    ├── maintenance/         # maintenance windows
+    ├── heartbeats/          # heartbeat monitors
+    └── routing/             # escalations, routing, notification, forwarding rules
 ```
 
-One tool per file. A tool module owns its input shape, its description and its
-handler, and nothing else — the largest is ~100 lines. `server.ts` concatenates
-the three domains' exported arrays; `index.ts` only knows about transports.
+The alert families are written one tool per file: a module owns its input shape,
+its description and its handler, and nothing else. The configuration families
+are generated instead — `family.ts` builds the mechanical
+list/get/create/update/delete shapes from a `ResourceConfig`, because writing
+ten of them by hand would be a hundred files whose differences are three lines
+each. Where an endpoint does not fit those five shapes, a hand-written tool sits
+beside the generated ones; `teams/contacts.ts` has both.
+
+`server.ts` concatenates the eight families into `allTools`, the full catalogue.
+`toolsets.ts` cuts that down to what a process actually registers, and
+`index.ts` only knows about transports. The tool catalogue itself — every tool,
+grouped by family — is in [TOOLS.md](TOOLS.md).
 
 Three conventions in here are load-bearing, and changing them by accident is the
 most likely way to break the server subtly. They are written up, with the bugs
