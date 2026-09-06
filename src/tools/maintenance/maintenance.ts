@@ -98,7 +98,7 @@ Check this first when alerts have gone quiet unexpectedly: an open maintenance w
 
 Args:
   - team_id (string, optional): a team's windows; omit for site-wide ones
-  - type (string, optional): filter by state, e.g. 'active' or 'past'
+  - type ('all' | 'non-expired' | 'past', optional): filter by state, default 'all'
   - limit (number): 1-100, default 20
   - offset (number): records to skip, default 0
   - response_format ('markdown' | 'json'): default 'markdown'
@@ -110,10 +110,15 @@ Team windows and site-wide windows are separate collections. Omitting team_id do
 Examples:
   - "Why is nothing alerting from the payments integration?" -> list with and without team_id and look for an active window naming it`,
     query: {
+      // The spec's enum, verbatim. It was `z.string()` with 'active' given as
+      // an example value the API does not accept — and since the filter was
+      // being dropped before it reached the wire, nothing ever rejected it.
       type: z
-        .string()
+        .enum(["all", "non-expired", "past"])
         .optional()
-        .describe("Filter by window state, e.g. 'active' or 'past'. Omit for all of them."),
+        .describe(
+          "Filter by window state: 'non-expired' for windows that have not ended, 'past' for ones that have. Default 'all'.",
+        ),
     },
     render: (items) => ["# Maintenance windows", "", renderMaintenances(items)].join("\n"),
     emptyMessage:
@@ -190,7 +195,7 @@ Returns: { "deleted": true, "maintenance_id": string }
 
 Deleting an active window resumes alerting immediately for everything it silenced. If the goal is to end it early, jsm_cancel_maintenance does that and keeps the record of what was silenced and when.
 
-Requires delete:ops-config:jira-service-management, which Atlassian account API tokens do not carry — see the README.`,
+Requires delete:ops-config:jira-service-management. That grant belongs to the individual token rather than to API-token auth — another token on the same account can hold it — so a 401 here means reissue JSM_API_TOKEN with the delete scopes included, or supply JSM_OAUTH_TOKEN, not that token auth cannot delete. See the README.`,
   },
 });
 

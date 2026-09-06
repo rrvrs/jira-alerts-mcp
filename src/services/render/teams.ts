@@ -2,7 +2,7 @@
  * Renderers for the teams family: teams, team roles, contacts and user roles.
  */
 
-import type { Contact, CustomUserRole, PlatformTeam, TeamRole } from "../../types.js";
+import type { Contact, PlatformTeam, TeamRole } from "../../types.js";
 
 export function renderTeams(teams: PlatformTeam[]): string {
   if (!teams.length) return "No teams found.";
@@ -60,22 +60,4 @@ export function renderContacts(contacts: Contact[]): string {
 
 export function renderContact(contact: Contact): string {
   return [`# Contact \`${contact.id ?? "?"}\``, "", renderContacts([contact])].join("\n");
-}
-
-export function renderUserRoles(roles: CustomUserRole[]): string {
-  if (!roles.length) return "No custom user roles found.";
-  return roles
-    .map((role) => `**${role.name ?? "(unnamed)"}**\n  - id: \`${role.id ?? "?"}\``)
-    .join("\n");
-}
-
-export function renderUserRole(role: CustomUserRole): string {
-  const lines = [`# ${role.name ?? "(unnamed role)"}`, "", `- **id**: \`${role.id ?? "?"}\``];
-  if (role.grantedRights?.length) lines.push(`- **granted**: ${role.grantedRights.join(", ")}`);
-  // disallowedRights subtract from what granted gives, so a role can read as
-  // permissive and not be.
-  if (role.disallowedRights?.length) {
-    lines.push(`- **disallowed**: ${role.disallowedRights.join(", ")}`);
-  }
-  return lines.join("\n");
 }

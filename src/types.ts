@@ -310,14 +310,6 @@ export interface Contact {
   status?: { enabled?: boolean; disabledReason?: string };
 }
 
-/** A custom user role, granting rights across the site rather than per team. */
-export interface CustomUserRole {
-  id?: string;
-  name?: string;
-  grantedRights?: string[];
-  disallowedRights?: string[];
-}
-
 /** A maintenance window: a period in which named entities stop alerting. */
 export interface Maintenance {
   id?: string;

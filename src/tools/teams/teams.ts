@@ -37,7 +37,7 @@ Args:
 
 Returns (json format): { "teams": [ { "teamId": string, "teamName": string } ], "pagination": { "count": number, "has_more": false } }
 
-This endpoint returns every team in one response and takes no paging parameters, so \`limit\` and \`offset\` do nothing here and has_more is always false.
+This endpoint returns every team in one response and takes no paging parameters, so \`limit\` and \`offset\` do nothing here. has_more is false unless the response was too large to render, in which case it is trimmed and there is no way to ask for the rest — narrow the request instead.
 
 An empty list usually means the credentials cannot see any team rather than that the site has none — team visibility is per-account.
 

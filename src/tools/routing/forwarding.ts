@@ -134,6 +134,6 @@ Returns: { "deleted": true, "forwarding_rule_id": string }
 
 If the rule is currently active, this changes who is notified immediately — the original person starts being paged again. That is usually the intent, but say so when reporting back.
 
-Requires delete:ops-config:jira-service-management, which Atlassian account API tokens do not carry — see the README.`,
+Requires delete:ops-config:jira-service-management. That grant belongs to the individual token rather than to API-token auth — another token on the same account can hold it — so a 401 here means reissue JSM_API_TOKEN with the delete scopes included, or supply JSM_OAUTH_TOKEN, not that token auth cannot delete. See the README.`,
   },
 });

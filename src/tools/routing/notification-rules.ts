@@ -151,7 +151,7 @@ Returns: { "deleted": true, "notification_rule_id": string }
 
 This person then hears nothing for the event the rule covered. jsm_update_notification_rule with enabled=false is the reversible alternative.
 
-Requires delete:ops-config:jira-service-management, which Atlassian account API tokens do not carry — see the README.`,
+Requires delete:ops-config:jira-service-management. That grant belongs to the individual token rather than to API-token auth — another token on the same account can hold it — so a 401 here means reissue JSM_API_TOKEN with the delete scopes included, or supply JSM_OAUTH_TOKEN, not that token auth cannot delete. See the README.`,
     },
   },
 );
@@ -283,7 +283,7 @@ Returns: { "deleted": true, "step_id": string }
 
 Removing the last step leaves a rule that notifies nobody while still appearing enabled. Check jsm_list_notification_steps first.
 
-Requires delete:ops-config:jira-service-management, which Atlassian account API tokens do not carry — see the README.`,
+Requires delete:ops-config:jira-service-management. That grant belongs to the individual token rather than to API-token auth — another token on the same account can hold it — so a 401 here means reissue JSM_API_TOKEN with the delete scopes included, or supply JSM_OAUTH_TOKEN, not that token auth cannot delete. See the README.`,
     },
   },
 );

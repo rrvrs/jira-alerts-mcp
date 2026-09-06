@@ -28,6 +28,16 @@ import { defineTool, type AnyToolDefinition } from "./define.js";
 interface ToolsetReport {
   name: ToolsetName;
   enabled: boolean;
+  /**
+   * Whether the selection asked for this family, regardless of what survived.
+   *
+   * Distinct from `enabled`, which counts registered tools and so goes false
+   * when read-only mode withholds every write tool in a family. Without the
+   * distinction, a read-only server told the user to add a toolset they had
+   * already selected — advice that changes nothing, since read-only is what
+   * withheld the tools.
+   */
+  selected: boolean;
   summary: string;
   scopes: string[];
   tool_count: number;
@@ -45,6 +55,7 @@ interface ToolsetReport {
 
 function report(catalogue: AnyToolDefinition[], selection: Selection): ToolsetReport[] {
   const enabled = new Set(selection.tools.map((tool) => tool.name));
+  const selected = new Set<string>(selection.toolsets);
 
   return TOOLSETS.map((name) => {
     const inSet = catalogue.filter((tool) => tool.toolset === name);
@@ -52,6 +63,7 @@ function report(catalogue: AnyToolDefinition[], selection: Selection): ToolsetRe
     return {
       name,
       enabled: loaded.length > 0,
+      selected: selected.has(name),
       summary: TOOLSET_INFO[name].summary,
       scopes: TOOLSET_INFO[name].scopes,
       tool_count: loaded.length,
@@ -75,6 +87,12 @@ function render(reports: ToolsetReport[], selection: Selection): string {
     lines.push(`Scopes: ${entry.scopes.join(", ")}`);
     if (entry.enabled) {
       lines.push(`Tools: ${entry.tools.join(", ")}`);
+    } else if (entry.selected && selection.readOnly) {
+      lines.push(
+        `Selected, but no tools loaded from it: read-only mode withheld them. Every tool in ` +
+          `this family writes. Unset JSM_READ_ONLY and restart — adding '${entry.name}' to ` +
+          `JSM_TOOLSETS will not help, it is already selected.`,
+      );
     } else {
       lines.push(
         `Not loaded. Enable it by adding '${entry.name}' to the JSM_TOOLSETS environment ` +
@@ -131,7 +149,9 @@ Returns (json format):
     "toolsets": [
       {
         "name": string,
-        "enabled": boolean,
+        "enabled": boolean,      // whether any of its tools are registered
+        "selected": boolean,     // whether the selection asked for it; false enabled with true
+                                 // selected means read-only mode withheld the tools
         "summary": string,
         "scopes": string[],      // OAuth scopes this family needs
         "tool_count": number,

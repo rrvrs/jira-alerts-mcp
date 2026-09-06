@@ -101,6 +101,22 @@ describe("the tool catalogue", () => {
     }
   });
 
+  it("does not tell the model that API-token auth cannot delete", () => {
+    // Checked against a live tenant on 2026-09-05: two API tokens for the same
+    // account behaved differently, one refused on every DELETE and one that
+    // completed the whole set. The delete grant belongs to the token, not to
+    // the auth method, and eleven descriptions said otherwise for a release —
+    // sending anyone who hit a 401 to rebuild their integration on OAuth when
+    // reissuing the token would have done.
+    const retracted = /API tokens? do(es)? not carry|API tokens? cannot delete/i;
+    for (const tool of tools) {
+      assert.ok(
+        !retracted.test(tool.description),
+        `${tool.name}: repeats the retracted claim that API tokens cannot delete`,
+      );
+    }
+  });
+
   it("registers all of them over a real MCP connection", async () => {
     // The end-to-end half: every input and output shape goes through the
     // SDK's own JSON Schema conversion. A shape the SDK cannot convert fails

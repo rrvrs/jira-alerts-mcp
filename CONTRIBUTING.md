@@ -108,7 +108,7 @@ Removing an `unverified` marker is how a family graduates. Do it in a commit tha
 9. Add tests, and drive them through `connectTools` from [`src/tools/test-support.ts`](src/tools/test-support.ts) rather than calling the handler directly. Calling handlers directly skips the SDK's output-schema validation — that is exactly how the empty-result bug above shipped with a green suite asserting it was fine.
 10. Update the tool table in the README.
 
-Adding a tool to an existing toolset does **not** change what existing installs see: the default selection is `core`, a frozen list of names in `src/toolsets.ts` guarded by a snapshot test. Widening the default is a separate, deliberate change — edit the array and the snapshot together, and say so in the release notes.
+Adding a tool to an existing toolset does **not** change what existing installs see. The default selection is the `responder` profile, and `core` is a frozen list of names in `src/toolsets.ts` guarded by a snapshot test — an install pinned to `core` keeps exactly those names even when `core` is combined with another toolset, so its auto-approval surface cannot widen under it on a patch bump. Widening either default is a separate, deliberate change — edit the array and the snapshot together, and say so in the release notes.
 
 ### On tool descriptions
 
@@ -116,10 +116,14 @@ The descriptions in this repo are long on purpose. They are the only documentati
 
 ## Not implemented yet
 
-- Alert **creation**. This was previously documented here as out of scope, on the grounds that creation belongs to the integration API (`/jsm/ops/integration/v2/alerts`) with an integration key. That is wrong: `POST /v1/alerts` is part of this API, takes the same credentials as every other tool, requires only `read:ops-alert:jira-service-management` + `write:ops-alert:jira-service-management`, and returns the same `{result, requestId}` receipt as the other writes — at HTTP 200 rather than 202, but asynchronous all the same. It is a gap, and it is planned.
-- `DELETE /v1/alerts/{id}` — destroys audit history with no undo, which is why it has waited rather than why it is forbidden.
+Alert creation and `DELETE /v1/alerts/{id}` were listed here for two releases; both shipped in 2.0.0 as `jsm_create_alert` and `jsm_delete_alert`. What is still absent, all of it present in the vendored spec:
 
-If you need either sooner, open an issue describing the workflow.
+- **Integrations** — `/v1/integrations` and the six paths below it: the integration list, its actions, and the outgoing alert filter.
+- **Syncs** — the eight `/v1/syncs` paths, including sync actions and action groups.
+- **JEC channels** — `/v1/jec/channels` and `/v1/jec/action`. Note the paging dialect: `size` with no position parameter, already described in `src/tools/paging.ts`.
+- **Attachment upload** — `POST /v1/alerts/{alertId}/attachments`. Listing, downloading and deleting are implemented; upload needs multipart handling this server does not yet do, and the whole family is marked `unverified` because the test tenant's plan excludes it.
+
+If you need one of these sooner, open an issue describing the workflow.
 
 ## Pull requests
 

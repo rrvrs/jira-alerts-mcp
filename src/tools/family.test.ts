@@ -138,6 +138,51 @@ describe("defineResourceFamily", () => {
     assert.equal(structured.pagination.count, 1);
   });
 
+  it("sends a declared query parameter even when the family maps no params", async () => {
+    // toParams used to be the only route from `query` to the wire, so a family
+    // that declared a filter and forgot to map it dropped it in silence — the
+    // parameter was in the input shape, in the description and in the endpoint
+    // manifest, and never in the request. jsm_list_maintenances shipped that way.
+    const tools = defineResourceFamily<Widget>(resource, {
+      list: {
+        name: "jsm_list_widgets",
+        title: "t",
+        description: "d",
+        query: { type: z.enum(["all", "past"]).optional() },
+        render: (items) => `${items.length}`,
+        emptyMessage: "none",
+      },
+    });
+    const { client, calls } = stubClient({ items: [{ id: "1", name: "one" }] });
+    const mcp = await connectTools(tools, client);
+
+    await callTool(mcp, "jsm_list_widgets", { type: "past" });
+
+    assert.equal(calls[0]?.params?.type, "past");
+  });
+
+  it("lets toParams rename a declared parameter, and does not also send the input name", async () => {
+    const tools = defineResourceFamily<Widget>(resource, {
+      list: {
+        name: "jsm_list_widgets",
+        title: "t",
+        description: "d",
+        query: { account_id: z.string().optional() },
+        queryFields: ["accountId"],
+        toParams: (p) => ({ accountId: p.account_id }),
+        render: (items) => `${items.length}`,
+        emptyMessage: "none",
+      },
+    });
+    const { client, calls } = stubClient({ items: [{ id: "1", name: "one" }] });
+    const mcp = await connectTools(tools, client);
+
+    await callTool(mcp, "jsm_list_widgets", { account_id: "acc-1" });
+
+    assert.equal(calls[0]?.params?.accountId, "acc-1");
+    assert.ok(!("account_id" in (calls[0]?.params ?? {})));
+  });
+
   it("returns the empty message rather than an empty render", async () => {
     const { client } = stubClient({ items: [] });
     const mcp = await connectTools(family(), client);

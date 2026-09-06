@@ -181,6 +181,44 @@ describe("resolveSelection", () => {
     );
   });
 
+  it("keeps core's frozen list when a toolset is named beside it", () => {
+    // The bug this replaces: a profile's `only` list was cleared globally by
+    // any bare toolset, so `core,schedules` handed back every tool in both
+    // families — including jsm_delete_alert, which core exists to exclude.
+    // core is frozen so an install's auto-approval surface cannot widen under
+    // it, and names are documented to combine freely; intersecting keeps both.
+    const core = resolveSelection(allTools, {
+      env: { JSM_TOOLSETS: "core" } as NodeJS.ProcessEnv,
+    });
+    const schedules = resolveSelection(allTools, {
+      env: { JSM_TOOLSETS: "schedules" } as NodeJS.ProcessEnv,
+    });
+    const combined = resolveSelection(allTools, {
+      env: { JSM_TOOLSETS: "core,schedules" } as NodeJS.ProcessEnv,
+    });
+
+    assert.deepEqual(
+      names(combined).sort(),
+      [...new Set([...names(core), ...names(schedules)])].sort(),
+    );
+    assert.equal(names(combined).includes("jsm_delete_alert"), false);
+    assert.equal(names(combined).includes("jsm_delete_alert_note"), false);
+  });
+
+  it("lets an open profile widen a toolset core restricts", () => {
+    // The other direction: responder is open over alerts, alert-actions and
+    // oncall, so combining it with core is still the whole responder surface.
+    // Intersecting per name must not turn a union into an intersection.
+    const responder = resolveSelection(allTools, {
+      env: { JSM_TOOLSETS: "responder" } as NodeJS.ProcessEnv,
+    });
+    const combined = resolveSelection(allTools, {
+      env: { JSM_TOOLSETS: "core,responder" } as NodeJS.ProcessEnv,
+    });
+
+    assert.deepEqual(names(combined).sort(), names(responder).sort());
+  });
+
   it("keeps 'core' a narrower surface than the default", () => {
     const core = resolveSelection(allTools, {
       env: { JSM_TOOLSETS: "core" } as NodeJS.ProcessEnv,
@@ -349,5 +387,26 @@ describe("jsm_list_capabilities", () => {
 
     const text = textOf(await callTool(mcp, "jsm_list_capabilities"));
     assert.match(text, /Read-only mode is on/);
+  });
+
+  it("blames read-only, not the selection, for a family whose tools all write", async () => {
+    // alert-actions is entirely writes, so read-only leaves it with no
+    // registered tools and it reports as "off". It was then given the generic
+    // advice — add it to JSM_TOOLSETS — which does nothing at all: it is
+    // already selected, and read-only is what withheld it.
+    const selection = resolveSelection(allTools, {
+      env: { JSM_READ_ONLY: "true" } as NodeJS.ProcessEnv,
+    });
+    const mcp = await connectServer(client, selection);
+
+    const text = textOf(await callTool(mcp, "jsm_list_capabilities"));
+    const section = text.slice(text.indexOf("### alert-actions"));
+    const entry = section.slice(0, section.indexOf("###", 1));
+
+    assert.match(entry, /read-only mode withheld them/);
+    assert.doesNotMatch(entry, /Enable it by adding/);
+    // oncall is not selected here at all, so it still gets the generic advice.
+    const off = text.slice(text.indexOf("### maintenance"));
+    assert.match(off.slice(0, off.indexOf("###", 1)), /Enable it by adding/);
   });
 });

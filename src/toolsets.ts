@@ -86,7 +86,7 @@ export const TOOLSET_INFO: Record<ToolsetName, ToolsetInfo> = {
     scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
   },
   teams: {
-    summary: "Teams and permissions: team discovery, team roles, user roles, contact methods.",
+    summary: "Teams and permissions: team discovery, team roles, contact methods.",
     scopes: ["read:ops-config:jira-service-management", "write:ops-config:jira-service-management"],
   },
   maintenance: {
@@ -316,8 +316,14 @@ export function resolveSelection(
   const effective = requested.length ? requested : [DEFAULT_PROFILE];
 
   const toolsets = new Set<ToolsetName>();
-  const onlyNames = new Set<string>();
-  let restrictToNames = true;
+  // A name's restriction applies to that name's own toolsets, not to the whole
+  // selection. `core` is a frozen list of names so an install's tool list — and
+  // so its auto-approval surface — cannot widen under it; a globally-cleared
+  // restriction meant `core,schedules` handed back every tool in both families,
+  // including the deletes core exists to exclude. Names still combine freely,
+  // which the README promises: they are unioned, each under its own rule.
+  const open = new Set<ToolsetName>();
+  const restrictions: Array<{ toolsets: ReadonlySet<ToolsetName>; only: ReadonlySet<string> }> = [];
 
   for (const name of effective) {
     if (isProfile(name)) {
@@ -325,16 +331,16 @@ export function resolveSelection(
       for (const toolset of profile.toolsets) toolsets.add(toolset);
       const only = "only" in profile ? profile.only : undefined;
       if (only) {
-        for (const toolName of only) onlyNames.add(toolName);
+        restrictions.push({ toolsets: new Set(profile.toolsets), only: new Set(only) });
       } else {
-        restrictToNames = false;
+        for (const toolset of profile.toolsets) open.add(toolset);
       }
       continue;
     }
 
     if (isToolset(name)) {
       toolsets.add(name);
-      restrictToNames = false;
+      open.add(name);
       continue;
     }
 
@@ -347,14 +353,19 @@ export function resolveSelection(
     );
   }
 
-  // Widened to string: a tool's group may be ALWAYS, which is never a member
-  // of the resolved toolsets and so is correctly excluded here. Tools marked
-  // ALWAYS are registered by buildServer, outside the selection.
-  const enabled: ReadonlySet<string> = toolsets;
-  let tools = catalogue.filter((tool) => enabled.has(tool.toolset));
-  if (restrictToNames && onlyNames.size) {
-    tools = tools.filter((tool) => onlyNames.has(tool.name));
-  }
+  // Widened to string: a tool's group may be ALWAYS, which no selected name
+  // ever contributes and so is correctly excluded here. Tools marked ALWAYS
+  // are registered by buildServer, outside the selection.
+  const unrestricted: ReadonlySet<string> = open;
+  const included = (tool: AnyToolDefinition): boolean =>
+    unrestricted.has(tool.toolset) ||
+    restrictions.some(
+      (restriction) =>
+        (restriction.toolsets as ReadonlySet<string>).has(tool.toolset) &&
+        restriction.only.has(tool.name),
+    );
+
+  let tools = catalogue.filter(included);
   if (readOnly) {
     tools = tools.filter((tool) => tool.annotations.readOnlyHint);
   }
