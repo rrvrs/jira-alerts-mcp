@@ -22,4 +22,4 @@ response envelope. For anything touching the API, say what you ran by hand —
 - [ ] New or changed tools state their sharp edges in the tool **description**, not only in code comments
 - [ ] Any new write tool goes through `executeAction`; any new list tool goes through `withCharacterLimit`
 - [ ] `annotations` (`readOnlyHint` / `destructiveHint` / `idempotentHint`) are set honestly — clients use these to decide what to auto-approve
-- [ ] README tool table updated if tools were added or removed
+- [ ] `TOOLS.md` tool table updated if tools were added or removed
