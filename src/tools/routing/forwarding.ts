@@ -33,7 +33,7 @@ const toForwardingBody = (params: Record<string, unknown>) => ({
 const forwardingBodyFields = ["fromUserId", "toUserId", "startDate", "endDate"];
 
 export const forwardingResource: ResourceConfig = {
-  toolset: "routing",
+  toolset: "forwarding",
   path: "/v1/forwarding-rules",
   noun: "forwarding_rule",
   plural: "forwarding_rules",

@@ -24,7 +24,7 @@ const tools = allTools;
 
 describe("the tool catalogue", () => {
   it("is not empty, so a broken export cannot make every check below vacuous", () => {
-    assert.ok(tools.length > 100, `expected the full catalogue, got ${tools.length}`);
+    assert.ok(tools.length > 50, `expected the full catalogue, got ${tools.length}`);
   });
 
   it("gives every tool a unique jsm_-prefixed name", () => {

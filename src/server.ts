@@ -23,7 +23,6 @@ import { teamTools } from "./tools/teams/index.js";
 import { maintenanceWindowTools } from "./tools/maintenance/index.js";
 import { heartbeatTools } from "./tools/heartbeats/index.js";
 import { routingTools } from "./tools/routing/index.js";
-import { policyTools } from "./tools/policies/index.js";
 
 /**
  * Every tool this server knows how to register, in catalogue order.
@@ -41,7 +40,6 @@ export const allTools: AnyToolDefinition[] = [
   ...maintenanceWindowTools,
   ...heartbeatTools,
   ...routingTools,
-  ...policyTools,
 ];
 
 /**

@@ -228,10 +228,10 @@ document maps them to no OAuth scope at all, so a token missing the delete
 scopes is turned away at the gateway with the same bare
 `scope does not match` — which reads like an auth dead end and is not one. A
 fully scoped token reaches the API and is told `Feature not available in your
-plan` instead. On a site whose plan excludes attachments, no token opens them;
-`jsm_list_alert_attachments` and `jsm_get_alert_attachment` are registered
-because they are real endpoints, and the handler reports the plan limit as a
-plan limit rather than sending you off to widen a token.
+plan` instead. On a site whose plan excludes attachments, no token opens them,
+which is why they now live in their own quarantined `attachments` toolset that
+no profile loads. The handler reports the plan limit as a plan limit rather than
+sending you off to widen a token.
 
 **Some actions depend on your JSM plan, not on your scopes.** On a Standard
 tenant, snooze, assign and custom actions are accepted and then fail out of band
@@ -240,25 +240,76 @@ plan is the limit. This is exactly why writes are asynchronous and why
 `jsm_get_request_status` matters — the immediate response to all three is a
 successful receipt.
 
+### What has and has not been verified
+
+Every tool in this server was run against a live Jira Service Management site
+before release. **Every tool that a profile can load returned a real success** —
+that is an invariant, and a test enforces it: a toolset marked unverified cannot
+appear in a profile.
+
+Three families could not be verified, and they ship quarantined rather than
+removed. Nothing about them is known to be broken; they were untestable on the
+site available, and the code is very likely correct for a site where they are
+not blocked.
+
+| Toolset | What the API answered | What that means |
+|---|---|---|
+| `heartbeats` | `402 Please upgrade your pricing plan for Heartbeat Monitoring` on every endpoint but the ping | Heartbeat Monitoring is not in every JSM plan. `jsm_ping_heartbeat` does work — and answers `PONG` even for a heartbeat that does not exist, so a successful ping proves nothing on its own. |
+| `attachments` | `403 Feature not available in your plan`, for a fully scoped token holding Jira admin | The plan excludes attachments. The API also declares no OAuth scope for these four endpoints, so their listed scopes are inferred from the alert family. |
+| `forwarding` | `422 Users cannot be forwarded back to themselves` | A forwarding rule needs two distinct users and the test site had one, so only `jsm_list_forwarding_rules` could be exercised. |
+
+Enable one by naming it alongside whatever else you want:
+
+```jsonc
+"env": { "JSM_TOOLSETS": "all,heartbeats" }
+```
+
+`jsm_list_capabilities` reports the same thing at runtime, so an assistant asking
+"can you create a heartbeat?" is told the family exists, is off, how to turn it
+on, and that it was never seen to work — rather than guessing.
+
+**Two families were removed in 2.0.0 rather than quarantined.** Alert policies
+(11 tools) and custom user roles (6 tools) answered `403 You are not authorized`
+under two separate credentials, one of them holding Jira `ADMINISTER`. Custom
+user roles is an Opsgenie **Enterprise** feature, and the policy refusal looks
+like the same kind of limit. Shipping seventeen tools whose only evidence was
+that they compiled was not worth the tool-list weight, so they are gone. If you
+have a site where they work and want them back, open an issue — the code is in
+the history and the drift guard still knows the endpoints.
+
 ### Choosing your toolsets
 
 The JSM Operations API is roughly 240 operations. Registering all of them would
 hand your client a tool list it cannot choose from accurately, so the surface is
 cut into named **toolsets** and you pick:
 
-| Name | What it registers | Scope |
+| Name | What it registers | Tools | Scope |
+|---|---|---|---|
+| `alerts` | Alert reads: search, detail, notes, activity logs, request status | 5 | `read:ops-alert:…` |
+| `alert-actions` | Create, acknowledge, close, snooze, assign, escalate, annotate, tag, delete | 18 | `read:` + `write:ops-alert:…`, plus `delete:ops-alert:…` for the destructive ones |
+| `oncall` | Who is on call now and next, shift timelines, schedule discovery | 4 | `read:ops-config:…` |
+| `schedules` | Schedules, rotations and overrides — create, edit, delete | 14 | `read:` + `write:ops-config:…` |
+| `teams` | Team discovery, team roles, contact methods | 13 | `read:` + `write:ops-config:…` |
+| `maintenance` | Maintenance windows, site-wide or per team | 6 | `read:` + `write:ops-config:…` |
+| `routing` | Escalations, routing rules, notification rules and steps | 21 | `read:` + `write:ops-config:…` |
+
+Three more ship but **no profile loads them** — see
+[What has and has not been verified](#what-has-and-has-not-been-verified):
+
+| Name | What it registers | Tools | Why it is quarantined |
+|---|---|---|---|
+| `heartbeats` | Dead-man's switches that alert when a ping stops arriving | 5 | 402 — not in every JSM plan |
+| `attachments` | List, download and delete alert attachments | 3 | 403 — not in every JSM plan |
+| `forwarding` | Forward one person's notifications to another | 5 | Needs two users; untested |
+
+Plus four **profiles**, which are bundles of the above:
+
+| Profile | Contents | Tools |
 |---|---|---|
-| `alerts` | Alert reads: search, detail, notes, activity logs, attachments, request status | `read:ops-alert:…` |
-| `alert-actions` | Create, acknowledge, close, snooze, assign, escalate, annotate, tag, and delete | `read:` + `write:ops-alert:…`, plus `delete:ops-alert:…` for the destructive ones |
-| `oncall` | Schedules, who is on call now and next, shift timelines | `read:ops-config:…` |
-
-Plus three **profiles**, which are bundles of the above:
-
-| Profile | Contents |
-|---|---|
-| `responder` | **The default.** `alerts` + `alert-actions` + `oncall` — the whole alert and on-call surface |
-| `core` | The thirteen tools that shipped before toolsets existed, plus `jsm_create_alert` |
-| `all` | Every toolset |
+| `responder` | **The default.** `alerts` + `alert-actions` + `oncall` | 27 |
+| `core` | The thirteen tools that shipped before toolsets existed, plus `jsm_create_alert` | 14 |
+| `admin` | `oncall` + `schedules` + `teams` + `maintenance` + `routing` — configuration, not incidents | 58 |
+| `all` | Every **verified** toolset | 81 |
 
 ```jsonc
 "env": { "JSM_TOOLSETS": "responder" }     // or "alerts,oncall", or "all"
@@ -275,9 +326,9 @@ listing thirteen tools. `responder` is derived from its toolsets and widens as
 families land, which is why it is the default: an alerts server whose alert tools
 are mostly invisible until you reconfigure it is not much use.
 
-`responder` and `all` hold the same tools today, because every toolset that
-exists is an alert or on-call one. They stop being the same request as soon as
-the configuration families land.
+**`all` means every verified toolset, not every toolset.** The three quarantined
+families have to be named on their own — `JSM_TOOLSETS=all,heartbeats` — so that
+asking for everything cannot hand you tools that have never been seen to work.
 
 **`jsm_list_capabilities` is always registered**, whatever you select. It reports
 every toolset, whether it is loaded, its scopes, and the variable to change — so
@@ -367,8 +418,6 @@ still unacknowledged, and acknowledges it again.
 | `jsm_get_alert` | `GET /v1/alerts/{id}` or `GET /v1/alerts/alias` | read |
 | `jsm_list_alert_notes` | `GET /v1/alerts/{id}/notes` | read |
 | `jsm_list_alert_logs` | `GET /v1/alerts/{id}/logs` | read |
-| `jsm_list_alert_attachments` | `GET /v1/alerts/{id}/attachments` | read |
-| `jsm_get_alert_attachment` | `GET /v1/alerts/{id}/attachments/{id}` | read |
 | `jsm_get_request_status` | `GET /v1/alerts/requests/{id}` | read |
 | `jsm_create_alert` | `POST /v1/alerts` | write |
 | `jsm_acknowledge_alert` | `POST /v1/alerts/{id}/acknowledge` | write |
@@ -386,7 +435,6 @@ still unacknowledged, and acknowledges it again.
 | `jsm_remove_alert_tags` | `DELETE /v1/alerts/{id}/tags` | **destructive** |
 | `jsm_add_alert_extra_properties` | `POST /v1/alerts/{id}/extra-properties` | **destructive** |
 | `jsm_remove_alert_extra_properties` | `DELETE /v1/alerts/{id}/extra-properties` | **destructive** |
-| `jsm_delete_alert_attachment` | `DELETE /v1/alerts/{id}/attachments/{id}` | **destructive** |
 | `jsm_execute_alert_action` | `POST /v1/alerts/{id}/action` | **destructive** |
 | `jsm_delete_alert` | `DELETE /v1/alerts/{id}` | **destructive** |
 | `jsm_list_schedules` | `GET /v1/schedules` | read |
@@ -424,12 +472,6 @@ Teams and permissions — the `teams` toolset, **not** registered by default:
 | `jsm_create_team_role` | `POST /v1/teams/{id}/roles` | write |
 | `jsm_update_team_role` | `PATCH /v1/teams/{id}/roles/{identifier}` | **destructive** |
 | `jsm_delete_team_role` | `DELETE /v1/teams/{id}/roles/{identifier}` | **destructive** |
-| `jsm_list_user_roles` | `GET /v1/roles` | read |
-| `jsm_get_user_role` | `GET /v1/roles/{identifier}` | read |
-| `jsm_create_user_role` | `POST /v1/roles` | write |
-| `jsm_update_user_role` | `PUT /v1/roles/{identifier}` | **destructive** |
-| `jsm_delete_user_role` | `DELETE /v1/roles/{identifier}` | **destructive** |
-| `jsm_assign_user_role` | `POST /v1/roles/assign` | **destructive** |
 | `jsm_list_contacts` | `GET /v1/users/contacts` | read |
 | `jsm_get_contact` | `GET /v1/users/contacts/{id}` | read |
 | `jsm_create_contact` | `POST /v1/users/contacts` | write |
@@ -454,7 +496,11 @@ windows, omit it for site-wide ones. They are separate collections, so omitting
 `team_id` does not return both — worth knowing when you are trying to explain
 why alerting has gone quiet.
 
-Heartbeats — the `heartbeats` toolset, **not** registered by default:
+The three quarantined toolsets below load only when named explicitly — no
+profile includes them, `all` included. See
+[What has and has not been verified](#what-has-and-has-not-been-verified).
+
+Heartbeats — the `heartbeats` toolset:
 
 | Tool | Endpoint | Read/Write |
 |---|---|---|
@@ -472,6 +518,32 @@ rather than as something to retry. `jsm_ping_heartbeat` is marked
 destructive because sending a ping by hand asserts, on the monitored job's
 behalf, that it is alive: it resets the timer and clears a firing alert.
 
+Alert attachments — the `attachments` toolset:
+
+| Tool | Endpoint | Read/Write |
+|---|---|---|
+| `jsm_list_alert_attachments` | `GET /v1/alerts/{id}/attachments` | read |
+| `jsm_get_alert_attachment` | `GET /v1/alerts/{id}/attachments/{id}` | read |
+| `jsm_delete_alert_attachment` | `DELETE /v1/alerts/{id}/attachments/{id}` | **destructive** |
+
+Uploading is not implemented — see the note at the end of this section. These
+three answer `403 Feature not available in your plan` on a site whose plan
+excludes attachments, whatever the token holds.
+
+Forwarding rules — the `forwarding` toolset:
+
+| Tool | Endpoint | Read/Write |
+|---|---|---|
+| `jsm_list_forwarding_rules` | `GET /v1/forwarding-rules` | read |
+| `jsm_get_forwarding_rule` | `GET /v1/forwarding-rules/{id}` | read |
+| `jsm_create_forwarding_rule` | `POST /v1/forwarding-rules` | write |
+| `jsm_update_forwarding_rule` | `PUT /v1/forwarding-rules/{id}` | **destructive** |
+| `jsm_delete_forwarding_rule` | `DELETE /v1/forwarding-rules/{id}` | **destructive** |
+
+Forwarding sends one person's notifications to another for a window. The API
+refuses to forward a user back to themselves, so verifying these needs a site
+with two users — which is the only reason they are quarantined.
+
 Who gets notified — the `routing` toolset, **not** registered by default:
 
 | Tool | Endpoint | Read/Write |
@@ -487,11 +559,6 @@ Who gets notified — the `routing` toolset, **not** registered by default:
 | `jsm_update_routing_rule` | `PATCH /v1/teams/{id}/routing-rules/{id}` | **destructive** |
 | `jsm_delete_routing_rule` | `DELETE /v1/teams/{id}/routing-rules/{id}` | **destructive** |
 | `jsm_change_routing_rule_order` | `PATCH /v1/teams/{id}/routing-rules/{id}/change-order` | **destructive** |
-| `jsm_list_forwarding_rules` | `GET /v1/forwarding-rules` | read |
-| `jsm_get_forwarding_rule` | `GET /v1/forwarding-rules/{id}` | read |
-| `jsm_create_forwarding_rule` | `POST /v1/forwarding-rules` | write |
-| `jsm_update_forwarding_rule` | `PUT /v1/forwarding-rules/{id}` | **destructive** |
-| `jsm_delete_forwarding_rule` | `DELETE /v1/forwarding-rules/{id}` | **destructive** |
 | `jsm_list_notification_rules` | `GET /v1/notification-rules` | read |
 | `jsm_get_notification_rule` | `GET /v1/notification-rules/{id}` | read |
 | `jsm_create_notification_rule` | `POST /v1/notification-rules` | write |
@@ -513,35 +580,14 @@ Notification rules belong to the account the credentials authenticate as. There
 is no parameter for reading somebody else's, so a shared token cannot answer
 "why wasn't Priya notified?" from that endpoint.
 
-Alert and notification policies — the `policies` toolset, **not** registered by
-default:
-
-| Tool | Endpoint | Read/Write |
-|---|---|---|
-| `jsm_list_alert_policies` | `GET /v1/alerts/policies` | read |
-| `jsm_list_team_policies` | `GET /v1/teams/{id}/policies` | read |
-| `jsm_get_policy` | `GET /v1/alerts/policies/{id}` or the team twin | read |
-| `jsm_create_alert_policy` | `POST /v1/alerts/policies` | write |
-| `jsm_update_alert_policy` | `PUT /v1/alerts/policies/{id}` | **destructive** |
-| `jsm_create_team_policy` | `POST /v1/teams/{id}/policies` | write |
-| `jsm_update_team_policy` | `PUT /v1/teams/{id}/policies/{id}` | **destructive** |
-| `jsm_delete_policy` | `DELETE /v1/alerts/policies/{id}` or the team twin | **destructive** |
-| `jsm_enable_policy` | `POST /v1/alerts/policies/{id}/enable` or the team twin | write |
-| `jsm_disable_policy` | `POST /v1/alerts/policies/{id}/disable` | **destructive** |
-| `jsm_change_policy_order` | `POST /v1/alerts/policies/{id}/change-order` | **destructive** |
-
-Eleven tools over sixteen endpoints. Where the global and team versions have
-identical shapes they share one tool with an optional `team_id`; where they do
-not, they stay separate — the team list *requires* a `policy_type` the global
-one does not accept, and only team policies carry `order` in the body.
-
-Policies apply in order and an alert policy with `continue_processing: false`
-stops the chain, so reordering one can silently disable every policy beneath it.
-A policy with no `filter` matches every alert. A notification policy with
-`suppress: true` means matching alerts page nobody while still appearing in the
-queue — the quietest thing configurable here, and the hardest to notice
-afterwards. All three are called out in the rendered output rather than left as
-fields to interpret.
+Alert and notification policies and custom user roles were **removed in 2.0.0**.
+Seventeen tools across `/v1/alerts/policies`, `/v1/teams/{id}/policies` and
+`/v1/roles` answered `403 You are not authorized` under two separate
+credentials, one of them holding Jira `ADMINISTER` — custom user roles is an
+Opsgenie Enterprise feature and the policy refusal looks like the same class of
+limit. They were never once seen to work, so they no longer ship. The endpoints
+are still in the vendored spec and the drift guard still reads them, so
+restoring the tools is a revert rather than a rewrite.
 
 Enable them with `JSM_TOOLSETS=responder,schedules,teams`, or `JSM_TOOLSETS=admin` for
 on-call reads plus schedule and team configuration. They are separate from
@@ -549,10 +595,10 @@ on-call reads plus schedule and team configuration. They are separate from
 responder working an incident should be one tool call away from, and the write
 scopes are a different grant.
 
-`jsm_deactivate_contact` and `jsm_assign_user_role` are marked destructive
-without deleting anything. Deactivating a contact method stops a person being
-notified — silently, which is the failure mode worth prompting on — and
-assigning a role grants site-wide rights.
+`jsm_deactivate_contact` and `jsm_change_routing_rule_order` are marked
+destructive without deleting anything. Deactivating a contact method stops a
+person being notified — silently, which is the failure mode worth prompting on —
+and reordering a routing rule changes which alerts reach whom.
 
 The alert and on-call tables above are registered by default. Narrow the surface with `JSM_TOOLSETS`
 or `JSM_READ_ONLY` — see [Choosing your toolsets](#choosing-your-toolsets).

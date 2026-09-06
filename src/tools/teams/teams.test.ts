@@ -15,11 +15,6 @@ import { callTool, connectTools, stubClient, textOf } from "../test-support.js";
 
 const TEAM = "00dfafff-17de-4e19-8906-6487cd17c9aa";
 
-function bodyOf(made: { body?: unknown } | undefined): Record<string, unknown> {
-  assert.ok(made, "expected the tool to issue a request");
-  return made.body as Record<string, unknown>;
-}
-
 describe("teams toolset", () => {
   it("reads teams from the platformTeams envelope", async () => {
     const { client, calls } = stubClient({ items: [{ teamId: TEAM, teamName: "Payments" }] });
@@ -116,20 +111,5 @@ describe("teams toolset", () => {
 
     assert.equal(calls[0]?.method, "PATCH");
     assert.equal(calls[0]?.path, "/v1/users/contacts/c%201/deactivate");
-  });
-
-  it("assigns a user role through its own endpoint, in the API's casing", async () => {
-    const { client, calls } = stubClient({ items: [] }, { write: {} });
-    const mcp = await connectTools(teamTools, client);
-
-    await callTool(mcp, "jsm_assign_user_role", { account_id: "acc-1", role_id: "role-1" });
-
-    assert.equal(calls[0]?.path, "/v1/roles/assign");
-    assert.deepEqual(bodyOf(calls[0]), { accountId: "acc-1", roleId: "role-1" });
-  });
-
-  it("marks granting site-wide rights destructive", async () => {
-    const assign = teamTools.find((t) => t.name === "jsm_assign_user_role");
-    assert.equal(assign?.annotations.destructiveHint, true);
   });
 });

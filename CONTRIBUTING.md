@@ -65,11 +65,11 @@ Neither allowance is free: the check also fails when the spec *does* declare an 
 
 ## Conventions worth preserving
 
-Three things in this codebase are load-bearing. Changing them by accident is the most likely way to break the server subtly.
+Four things in this codebase are load-bearing. Changing them by accident is the most likely way to break the server subtly.
 
 **1. Every write goes through `executeWrite`.** See [`src/tools/execute-write.ts`](src/tools/execute-write.ts); the alert family reaches it through the one-line [`alertAction`](src/tools/actions/alert-action.ts) helper, which owns the `/v1/alerts/{id}/` prefix. JSM applies alert actions asynchronously and returns a receipt rather than the updated alert, and one executor is what guarantees every write tool reports that receipt the same way and points at `jsm_get_request_status`. A new write tool that renders its own response will teach the model an inconsistent contract, and it will start believing writes have landed when they haven't.
 
-Asynchrony is a `mode`, not an assumption. Alert actions are asynchronous; note edits and every configuration write are not, and a 204 carries no body at all. Telling the model to poll a request id that was never issued teaches a false contract just as surely as rendering your own receipt, so state the mode per tool — and use `renderDeleted` for a 204, which exists for the same reason `emptyResult` does: a result with no `structuredContent` is rejected outright when an `outputSchema` is declared.
+Asynchrony is a `mode`, not an assumption. Alert actions are asynchronous; note edits and every configuration write are not, and a 204 carries no body at all. Telling the model to poll a request id that was never issued teaches a false contract just as surely as rendering your own receipt, so state the mode per tool — and use `renderDeleted` for a 204 that removed something or `renderConfirmed` for one that did not. Both exist for the same reason `emptyResult` does: a result with no `structuredContent` is rejected outright when an `outputSchema` is declared. Declaring the updated object as the output of a 204 endpoint is not a cosmetic mistake — the empty body deserialises to a string, output validation rejects it, and the tool is unreachable on every call. `check:endpoints` fails any tool that does this.
 
 **2. Every list tool goes through `executeList`.** See [`src/tools/list-executor.ts`](src/tools/list-executor.ts). It owns fetching, the empty-result branch, truncation to 25,000 characters, the pagination block and the format switch.
 
@@ -86,6 +86,14 @@ The wrapping happens once, in `registerTools`, which passes `z.strictObject(shap
 Two older claims about this are no longer true, and are worth un-learning: SDK ≥ 1.30 *accepts* a pre-wrapped Zod schema (`getZodSchemaObject` returns it as-is), and unknown keys are now **rejected, not stripped**. Both held on SDK 1.12.
 
 Related: `ToolResult` in `src/services/format.ts` is a **type alias, not an interface**. The SDK's `CallToolResult` carries an index signature, and TypeScript only grants an implicit one to type aliases. Making it an interface breaks every tool callback's typecheck.
+
+**4. A toolset reaches a profile only after it has been seen to work.** Every tool a profile can load has returned a real success against a live Jira Service Management site. That is an invariant, and [`src/toolsets.test.ts`](src/toolsets.test.ts) enforces it.
+
+A family you cannot verify still ships — the code is probably right, and someone on a different plan will want it — but it carries an `unverified` reason in `TOOLSET_INFO` saying what blocked it, and no profile includes it, `all` included. Users reach it by naming it: `JSM_TOOLSETS=all,heartbeats`. `jsm_list_capabilities` repeats the reason at runtime, so an assistant tells the user what the limit was instead of suggesting a config change that will hit the same 402.
+
+Removing an `unverified` marker is how a family graduates. Do it in a commit that says which tool was run, against what, and what came back.
+
+2.0.0 removed two families outright rather than quarantining them — alert policies and custom user roles, seventeen tools that answered `403 You are not authorized` under two separate credentials, one holding Jira `ADMINISTER`. Quarantine is for "we could not test this here"; deletion is for "no credential we can plausibly get will ever run this".
 
 ## Adding a tool
 
