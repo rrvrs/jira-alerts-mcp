@@ -61,3 +61,29 @@ export function renderContacts(contacts: Contact[]): string {
 export function renderContact(contact: Contact): string {
   return [`# Contact \`${contact.id ?? "?"}\``, "", renderContacts([contact])].join("\n");
 }
+
+/**
+ * A contact write receipt, which carries less than a read of the same contact.
+ *
+ * The four contact write endpoints answer `SimpleCreateData`/`SimpleData` — an
+ * id, sometimes a name, never the method or address. Rendered through
+ * renderContact those absent fields printed as `**?** — ?`, so a create whose
+ * id had just been made readable still looked like it had failed, and a model
+ * reading the receipt would report the destination as unknown.
+ *
+ * Reports what the API actually returned and names the read that carries the
+ * rest. Still defers to renderContacts if a field does arrive, so an API that
+ * starts answering in full needs no change here.
+ */
+export function renderContactReceipt(contact: Contact): string {
+  const known = contact.method !== undefined || contact.to !== undefined;
+  return [
+    `# Contact \`${contact.id ?? "?"}\``,
+    "",
+    known
+      ? renderContacts([contact])
+      : "The API confirms this write with the contact id alone; it does not return the method " +
+        "or destination. Read it back with jsm_get_contact to see where it delivers and " +
+        "whether it is enabled.",
+  ].join("\n");
+}
