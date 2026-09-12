@@ -38,12 +38,13 @@ Run `npm run sync:version` on its own if the version was edited by hand.
 it. Releases here carry a message saying what is in them, so pass one:
 
 ```bash
-npm version patch -m "2.0.2: %s — <what changed and why it matters>"
+npm version patch -m "%s — <what changed and why it matters>"
 ```
 
-`%s` is substituted with the new version. The tag it creates is what
-`release.yml` fires on, so there is no separate tagging step; push the commit
-first, then the tag.
+`%s` is substituted with the new version, so do **not** type it as well — a
+message of `"2.0.2: %s — ..."` commits as `2.0.2: 2.0.2 — ...`. The tag npm
+creates is what `release.yml` fires on, so there is no separate tagging step;
+push the commit first, then the tag.
 
 This used to be a table of four fields to edit by hand, and the count kept being
 wrong. `SERVER_VERSION` is what the server reports over the MCP handshake, so a

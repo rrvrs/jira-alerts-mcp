@@ -3,7 +3,7 @@
   "name": "io.github.rrvrs/jira-alerts-mcp",
   "title": "Jira Alerts (JSM Operations)",
   "description": "MCP server for Jira Service Management Operations — alerts, on-call schedules and responders",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "websiteUrl": "https://github.com/rrvrs/jira-alerts-mcp#readme",
   "repository": {
     "url": "https://github.com/rrvrs/jira-alerts-mcp",
@@ -25,7 +25,7 @@
     {
       "registryType": "npm",
       "identifier": "jira-alerts-mcp",
-      "version": "2.0.1",
+      "version": "2.1.0",
       "transport": { "type": "stdio" },
       "environmentVariables": [
         {
