@@ -11,6 +11,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { SERVER_NAME, SERVER_VERSION } from "./constants.js";
 import type { JsmClient } from "./services/client.js";
+import { withModernDialect } from "./services/schema-dialect.js";
 import type { Selection } from "./toolsets.js";
 import { createCapabilitiesTool } from "./tools/capabilities.js";
 import type { AnyToolDefinition } from "./tools/define.js";
@@ -52,5 +53,12 @@ export const allTools: AnyToolDefinition[] = [
 export function buildServer(client: JsmClient, selection: Selection): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
   registerTools(server, client, [...selection.tools, createCapabilitiesTool(allTools, selection)]);
+
+  // Every transport this server is handed gets the dialect correction, so no
+  // future call site can forget it — see services/schema-dialect.ts for why the
+  // SDK's advertised schemas are unusable without it.
+  const connect = server.connect.bind(server);
+  server.connect = (transport) => connect(withModernDialect(transport));
+
   return server;
 }
