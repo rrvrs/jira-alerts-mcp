@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="t d">
+  <title id="t">Jira Alerts MCP</title>
+  <desc id="d">A white alert bell on a rounded orange tile.</desc>
+  <!-- The tile carries its own background, so one asset reads on any theme. -->
+  <rect width="64" height="64" rx="15" fill="#EE5B34"/>
+  <!-- Nub overlaps the dome by 0.6, so it never reads as a floating dot. -->
+  <circle cx="32" cy="15.2" r="3.4" fill="#fff"/>
+  <path d="M32 18c-7.8 0-12.7 6-12.7 13.4v7.4l-3.9 6h33.2l-3.9-6v-7.4C44.7 24 39.8 18 32 18z" fill="#fff"/>
+  <!-- Clapper tucked into the base, so it holds together at 16px. -->
+  <circle cx="32" cy="48.8" r="4.3" fill="#fff"/>
+</svg>
