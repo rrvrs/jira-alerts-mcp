@@ -68,8 +68,16 @@ claude mcp add jira-alerts-mcp \
   --env JSM_CLOUD_ID='your-cloud-id' \
   --env JSM_EMAIL='you@example.com' \
   --env JSM_API_TOKEN="${JSM_API_TOKEN}" \
+  --env JSM_TOOLSETS='all' \
   -- npx -y jira-alerts-mcp
 ```
+
+`JSM_TOOLSETS=all` registers every **verified** toolset — 82 tools rather than
+the 28 the `responder` default gives you, adding schedules, teams, maintenance
+windows and routing. Drop the line to start narrow; `all` is not the widest
+possible surface, because the three quarantined families still have to be asked
+for by name. See [Choosing your toolsets](#choosing-your-toolsets) for what each
+one covers and why a bigger tool list is not automatically better.
 
 `--scope user` registers the server for your whole account rather than only the
 directory you happened to run the command in. That is what you want for an
@@ -94,7 +102,8 @@ Developer → **Edit Config**. That creates the file if it doesn't exist yet:
       "env": {
         "JSM_CLOUD_ID": "your-cloud-id",
         "JSM_EMAIL": "you@example.com",
-        "JSM_API_TOKEN": "your-api-token"
+        "JSM_API_TOKEN": "your-api-token",
+        "JSM_TOOLSETS": "all"
       }
     }
   }
