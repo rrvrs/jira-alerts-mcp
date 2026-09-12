@@ -152,6 +152,31 @@ expect(
   `src/constants.ts SERVER_NAME (${serverName}) !== package.json name (${pkg.name})`,
 );
 
+// --- The lockfile records the version too -----------------------------------
+//
+// This is the fifth place, and the one that had never been checked: 2.0.0
+// shipped with package-lock.json still reporting 1.1.1 in both fields, and it
+// stayed that way until a dependabot bump happened to regenerate it. Nothing
+// failed, because `npm ci` only cares that the dependencies match and is happy
+// to install a lockfile whose version field disagrees — so the published
+// tarball carried a lockfile claiming the wrong version of its own package.
+//
+// scripts/sync-version.mjs writes both fields from package.json. This asserts
+// it was run.
+
+const lock = read("package-lock.json");
+
+expect(
+  lock.version === pkg.version,
+  `package-lock.json version (${lock.version}) !== package.json version (${pkg.version}) — ` +
+    "run `npm run sync:version`",
+);
+expect(
+  lock.packages?.[""]?.version === pkg.version,
+  `package-lock.json packages[""].version (${lock.packages?.[""]?.version}) !== ` +
+    `package.json version (${pkg.version}) — run \`npm run sync:version\``,
+);
+
 // --- The vendored spec must not ship to npm --------------------------------
 
 // 614 KB of OpenAPI document is a CI input, not something every install should
@@ -221,6 +246,7 @@ if (failures.length) {
 
 console.log(`✓ package.json and server.json agree — ${server.name}@${server.version}`);
 console.log(`✓ src/constants.ts reports ${serverName}@${serverVersion}`);
+console.log(`✓ package-lock.json records ${lock.version}`);
 console.log(
   `✓ ruleset requires ${required.length} check(s), all produced on PRs; every CI leg is gated`,
 );
