@@ -1,6 +1,6 @@
 {
   "name": "jira-alerts-mcp",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "mcpName": "io.github.rrvrs/jira-alerts-mcp",
   "description": "MCP server for the Jira Service Management Operations REST API \u2014 alerts and on-call",
   "keywords": [
