@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="https://raw.githubusercontent.com/rrvrs/jira-alerts-mcp/main/docs/logo.png" alt="" width="72" height="72">
+
 # Jira Alerts MCP
 
 **Find what is paging you, and who is on call — from your agent.**

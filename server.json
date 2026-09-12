@@ -9,6 +9,18 @@
     "url": "https://github.com/rrvrs/jira-alerts-mcp",
     "source": "github"
   },
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/rrvrs/jira-alerts-mcp/main/docs/logo.png",
+      "mimeType": "image/png",
+      "sizes": ["512x512"]
+    },
+    {
+      "src": "https://raw.githubusercontent.com/rrvrs/jira-alerts-mcp/main/docs/logo.svg",
+      "mimeType": "image/svg+xml",
+      "sizes": ["any"]
+    }
+  ],
   "packages": [
     {
       "registryType": "npm",
