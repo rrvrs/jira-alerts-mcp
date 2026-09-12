@@ -50,6 +50,8 @@
     "clean": "rm -rf dist",
     "check:manifests": "node scripts/check-manifests.mjs",
     "check:endpoints": "node --import tsx scripts/check-endpoints.mjs",
+    "sync:version": "node scripts/sync-version.mjs",
+    "version": "node scripts/sync-version.mjs && git add server.json src/constants.ts package-lock.json",
     "spec:refresh": "node scripts/refresh-spec.mjs",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
   },

@@ -12,19 +12,53 @@ half depends on anyone remembering to run it.
 
 ## 1. Bump the version
 
-Four places, and they must agree:
+One command:
 
-| File | Field |
-|---|---|
-| `package.json` | `version` |
-| `server.json` | `version` |
-| `server.json` | `packages[0].version` |
-| `src/constants.ts` | `SERVER_VERSION` |
+```bash
+npm version patch    # or minor / major
+```
 
-The last one is the one that used to get missed. It is what the server reports
-over the MCP handshake, so a stale value misreports the version to every
-connected client — and until `check:manifests` started asserting it, every other
-check still passed while it was wrong.
+`package.json` is the single source of truth — npm requires the literal there,
+so it is the one place that cannot point somewhere else. The `version` lifecycle
+hook runs `scripts/sync-version.mjs`, which writes the other five fields from it
+and stages them, so they land in the same commit npm makes:
+
+| File | Field | How it is set |
+|---|---|---|
+| `package.json` | `version` | **the source** — npm writes it |
+| `server.json` | `version` | derived |
+| `server.json` | `packages[0].version` | derived |
+| `src/constants.ts` | `SERVER_VERSION` | derived |
+| `package-lock.json` | `version` | derived |
+| `package-lock.json` | `packages[""].version` | derived |
+
+Run `npm run sync:version` on its own if the version was edited by hand.
+
+`npm version` writes a commit message of just the version — `2.0.2` — and tags
+it. Releases here carry a message saying what is in them, so pass one:
+
+```bash
+npm version patch -m "2.0.2: %s — <what changed and why it matters>"
+```
+
+`%s` is substituted with the new version. The tag it creates is what
+`release.yml` fires on, so there is no separate tagging step; push the commit
+first, then the tag.
+
+This used to be a table of four fields to edit by hand, and the count kept being
+wrong. `SERVER_VERSION` is what the server reports over the MCP handshake, so a
+stale value misreports the version to every connected client while every other
+check passes — that is why `check:manifests` started asserting it. The lockfile
+was the fifth and least visible: 2.0.0 shipped with `package-lock.json` still
+reporting `1.1.1` in both fields, and nothing noticed until a dependabot bump
+happened to regenerate it, because `npm ci` only cares that the dependencies
+match. Both fields are now derived *and* asserted.
+
+Deriving and checking are not redundant. The script stops the drift happening;
+`check:manifests` catches it anyway if the script is bypassed, someone edits a
+version by hand, or a seventh place appears. A target the script cannot find is
+a hard failure rather than a silent no-op, so a renamed constant stops the
+release instead of leaving a stale version behind.
 
 ```bash
 npm run check:manifests
@@ -51,11 +85,19 @@ npm pack --dry-run
 `files` is `["dist"]`, so tests, sources and `.env.example` stay out. `dist/`
 must contain no `*.test.js` and no `test-support.*` — CI checks this too.
 
-## 3. Tag, and let CI publish
+## 3. Push, and let CI publish
+
+`npm version` in §1 already made the commit and the tag, so this is just
+pushing both — the branch first, so the tag points at a commit that exists on
+the remote:
 
 ```bash
-git tag -a v1.0.1 -m "v1.0.1" && git push origin v1.0.1
+git push origin main && git push origin v2.0.2
 ```
+
+If the version was bumped some other way, the tag is
+`git tag -a v2.0.2 -m "v2.0.2"` and must match `package.json` exactly; the
+workflow refuses a tag that does not.
 
 That is the whole release, both halves. `.github/workflows/release.yml` fires on
 the tag, re-runs lint, typecheck, test, build and `check:manifests` on a clean
