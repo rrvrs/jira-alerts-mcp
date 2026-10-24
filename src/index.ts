@@ -78,11 +78,6 @@ async function runHttp(client: JsmClient, selection: Selection): Promise<void> {
     });
 
     try {
-      // @ts-expect-error Transport declares `sessionId?: string` while
-      // StreamableHTTPServerTransport declares `get sessionId(): string | undefined`
-      // — a required property whose type includes undefined. Under
-      // exactOptionalPropertyTypes the SDK's own class does not satisfy its own
-      // interface (same for onclose/onerror/onmessage). Nothing to fix on our side.
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (error) {

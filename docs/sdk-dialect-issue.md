@@ -14,8 +14,10 @@ PRs**, the oldest from May 2026. Nothing has shipped.
 | [#2653](https://github.com/modelcontextprotocol/typescript-sdk/pull/2653) | PR | 2026-08-12 | open, unmerged | `fix: default Zod v4 JSON Schema target to draft-2020-12` |
 | [#2721](https://github.com/modelcontextprotocol/typescript-sdk/issues/2721) | issue | 2026-08-26 | open | `outputSchema always emitted as JSON Schema draft-07, breaking clients that only accept 2020-12` |
 
-The latest release is **1.30.0** (published 2026-07-27) and it still emits draft-07 —
-verified here, not assumed. There is no newer version to upgrade to.
+The latest release is **1.32.2** and it still emits draft-07 — re-verified 2026-10-24
+against the installed package: `McpServer`'s tools/list handler still calls
+`toJsonSchemaCompat` with no `target`, and `mapMiniTarget` still falls back to
+`'draft-7'`. There is no newer version to upgrade to.
 
 [#2534](https://github.com/modelcontextprotocol/typescript-sdk/pull/2534) *was* merged
 (2026-07-27), but it makes the **SDK's own client validator** tolerate draft-07. That
