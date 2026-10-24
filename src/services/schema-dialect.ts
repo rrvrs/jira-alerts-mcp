@@ -1,7 +1,7 @@
 /**
  * Re-declares advertised tool schemas as JSON Schema 2020-12.
  *
- * @modelcontextprotocol/sdk 1.30.0 advertises every tool schema as draft-07:
+ * @modelcontextprotocol/sdk 1.30.0 through 1.32.2 advertise every tool schema as draft-07:
  * McpServer's tools/list handler calls `toJsonSchemaCompat` with only
  * `strictUnions` and `pipeStrategy`, and `mapMiniTarget` falls back to
  * 'draft-7' when no `target` is passed (server/zod-json-schema-compat.js).
@@ -24,7 +24,7 @@
  * object in `validateToolOutput`, never the JSON Schema advertised here.
  *
  * Known upstream: typescript-sdk issues #2084 and #2721, with fixes open and
- * unmerged in PRs #2085 (since 2026-05) and #2653. 1.30.0 is the latest release
+ * unmerged in PRs #2085 (since 2026-05) and #2653. 1.32.2 is the latest release
  * and still emits draft-07, so there is no version to upgrade to. Remove this
  * once one of those PRs ships — see docs/sdk-dialect-issue.md.
  */
