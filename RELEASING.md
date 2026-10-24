@@ -224,7 +224,11 @@ Two properties it inherits from the steps around it:
 
 - **It runs after the npm publish, never before.** The registry resolves the npm
   package named in `server.json` and checks its `mcpName` matches. Submit first
-  and it rejects you, because there is nothing to verify yet.
+  and it rejects you, because there is nothing to verify yet. "After" means
+  after npmjs *serves* the version, not after `npm publish` returns: the two can
+  be minutes apart, and 2.1.1's first run lost that race with a 404. The step
+  polls `registry.npmjs.org/jira-alerts-mcp/<version>` for up to five minutes
+  before submitting.
 - **It is skip-if-present.** If the version is already listed the step logs a
   notice and exits, so a release that fails later is safe to re-run. If the
   registry cannot be reached for that check, the step warns and attempts the

@@ -148,6 +148,24 @@ jobs:
             exit 0
           fi
 
+          # `npm publish` returning is not the version being readable. npm says
+          # "may take a few minutes to become available", and the registry
+          # validates against what npmjs serves, not what it accepted: v2.1.1's
+          # first run asked two seconds after the publish, got "version '2.1.1'
+          # was not found (status: 404)", and needed a re-run. Wait for npmjs to
+          # serve the exact version, then publish.
+          for attempt in $(seq 1 30); do
+            if curl -fsS -o /dev/null "https://registry.npmjs.org/jira-alerts-mcp/${ver}"; then
+              echo "npmjs serves jira-alerts-mcp@${ver}"
+              break
+            fi
+            if [ "$attempt" = 30 ]; then
+              echo "::error::npmjs still does not serve jira-alerts-mcp@${ver} after 5 minutes; re-run this job once it does — the npm publish will skip"
+              exit 1
+            fi
+            sleep 10
+          done
+
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz" \
             | tar xz mcp-publisher
 
