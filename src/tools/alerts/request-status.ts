@@ -7,8 +7,14 @@ import { z } from "zod";
 import { handleApiError } from "../../services/client.js";
 import { fail, renderFormat } from "../../services/format.js";
 import type { RequestStatus } from "../../types.js";
-import { defineTool } from "../define.js";
+import { defineTool, type RequestPlan } from "../define.js";
 import { requestStatusShape } from "./shapes.js";
+
+const planFor = (params: { request_id: string }): RequestPlan => ({
+  method: "GET",
+  path: `/v1/alerts/requests/${encodeURIComponent(params.request_id)}`,
+  shape: "object",
+});
 
 export const getRequestStatus = defineTool({
   name: "jsm_get_request_status",
@@ -46,11 +52,10 @@ Error handling:
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: planFor,
   handler: async (params, client) => {
     try {
-      const status = await client.getOne<RequestStatus>(
-        `/v1/alerts/requests/${encodeURIComponent(params.request_id)}`,
-      );
+      const status = await client.getOne<RequestStatus>(planFor(params).path);
 
       const markdown = [
         `# Request \`${params.request_id}\``,

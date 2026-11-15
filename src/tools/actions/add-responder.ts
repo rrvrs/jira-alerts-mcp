@@ -3,8 +3,14 @@
  */
 
 import { defineTool } from "../define.js";
-import { alertAction } from "./alert-action.js";
+import { alertAction, alertActionPlan } from "./alert-action.js";
 import { asyncOutputSchema, addResponderShape } from "./shapes.js";
+
+const planFor = (params: { alert_id: string; responder_id: string; responder_type: string }) =>
+  alertActionPlan(params.alert_id, "responders", {
+    id: params.responder_id,
+    type: params.responder_type,
+  });
 
 export const addAlertResponder = defineTool({
   name: "jsm_add_alert_responder",
@@ -41,9 +47,7 @@ Error handling:
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: planFor,
   handler: async (params, client) =>
-    alertAction(client, "Add responder", params.alert_id, "responders", {
-      id: params.responder_id,
-      type: params.responder_type,
-    }),
+    alertAction(client, "Add responder", params.alert_id, planFor(params)),
 });

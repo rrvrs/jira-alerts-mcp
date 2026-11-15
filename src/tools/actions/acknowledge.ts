@@ -3,8 +3,10 @@
  */
 
 import { defineTool } from "../define.js";
-import { alertAction } from "./alert-action.js";
+import { alertAction, alertActionPlan } from "./alert-action.js";
 import { asyncOutputSchema, acknowledgeShape } from "./shapes.js";
+
+const planFor = (params: { alert_id: string }) => alertActionPlan(params.alert_id, "acknowledge");
 
 export const acknowledgeAlert = defineTool({
   name: "jsm_acknowledge_alert",
@@ -35,6 +37,7 @@ Examples:
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: planFor,
   handler: async (params, client) =>
-    alertAction(client, "Acknowledge", params.alert_id, "acknowledge"),
+    alertAction(client, "Acknowledge", params.alert_id, planFor(params)),
 });

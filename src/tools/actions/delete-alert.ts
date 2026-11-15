@@ -8,9 +8,16 @@
  * less useful claim than "this is irreversible, are you sure".
  */
 
-import { defineTool } from "../define.js";
+import { defineTool, type RequestPlan } from "../define.js";
 import { executeWrite } from "../execute-write.js";
 import { asyncOutputSchema, deleteAlertShape } from "./shapes.js";
+
+const planFor = (params: { alert_id: string }): RequestPlan => ({
+  method: "DELETE",
+  path: `/v1/alerts/${encodeURIComponent(params.alert_id)}`,
+  // An async receipt, not a 204: this endpoint answers {result, requestId}.
+  shape: "object",
+});
 
 export const deleteAlert = defineTool({
   name: "jsm_delete_alert",
@@ -47,12 +54,15 @@ Constraints and errors:
   },
   // Not through alertAction: that helper appends an action segment to the path,
   // and this endpoint is the alert itself.
-  handler: async (params, client) =>
-    executeWrite(client, {
+  plan: planFor,
+  handler: async (params, client) => {
+    const plan = planFor(params);
+    return executeWrite(client, {
       label: "Delete alert",
-      method: "DELETE",
-      path: `/v1/alerts/${encodeURIComponent(params.alert_id)}`,
+      method: plan.method,
+      path: plan.path,
       mode: "async",
       subject: { key: "alert_id", value: params.alert_id, noun: "alert" },
-    }),
+    });
+  },
 });

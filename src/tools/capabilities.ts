@@ -43,6 +43,16 @@ interface ToolsetReport {
   tool_count: number;
   tools: string[];
   /**
+   * Whether this family is reached through the code-mode dispatchers.
+   *
+   * Reported because in code mode every classic tool is absent, and this tool's
+   * whole job is explaining an absent tool. Without it, a model asking "why is
+   * there no jsm_list_schedules?" would be told to set JSM_TOOLSETS — advice
+   * that changes nothing, because the family is already loaded and reachable
+   * as jsm_call operation="listSchedules".
+   */
+  via_code: boolean;
+  /**
    * Why this family has never been seen to work, when that is the case.
    *
    * Reported because "off" alone is ambiguous and the two cases need opposite
@@ -56,6 +66,7 @@ interface ToolsetReport {
 function report(catalogue: AnyToolDefinition[], selection: Selection): ToolsetReport[] {
   const enabled = new Set(selection.tools.map((tool) => tool.name));
   const selected = new Set<string>(selection.toolsets);
+  const viaCode = new Set<string>(selection.codeToolsets);
 
   return TOOLSETS.map((name) => {
     const inSet = catalogue.filter((tool) => tool.toolset === name);
@@ -64,6 +75,7 @@ function report(catalogue: AnyToolDefinition[], selection: Selection): ToolsetRe
       name,
       enabled: loaded.length > 0,
       selected: selected.has(name),
+      via_code: viaCode.has(name),
       summary: TOOLSET_INFO[name].summary,
       scopes: TOOLSET_INFO[name].scopes,
       tool_count: loaded.length,
@@ -73,20 +85,48 @@ function report(catalogue: AnyToolDefinition[], selection: Selection): ToolsetRe
   });
 }
 
-function render(reports: ToolsetReport[], selection: Selection): string {
+function render(reports: ToolsetReport[], selection: Selection, toolCount: number): string {
   const lines: string[] = [
     `**Selection:** ${selection.requested.join(", ")}${selection.readOnly ? " (read-only)" : ""}`,
-    `**Tools registered:** ${selection.tools.length}`,
+    `**Tools registered:** ${toolCount}`,
+    ...(selection.codeToolsets.length
+      ? [
+          "",
+          "**Code mode is on.** The families marked below are reached through `jsm_call` " +
+            "rather than as tools of their own, so this server's tool list is a handful of " +
+            "dispatchers instead of ninety-odd tools while reaching more of the API, not " +
+            "less. `jsm_search_api` finds an operation; `jsm_read_api` gives its arguments; " +
+            "`jsm_apply` makes one write per call. An absent classic tool here is not a " +
+            "missing capability.",
+        ]
+      : []),
     "",
   ];
 
   for (const entry of reports) {
-    const mark = entry.enabled ? "on" : entry.unverified ? "off (unverified)" : "off";
+    const mark = entry.via_code
+      ? entry.enabled
+        ? "on (code mode, plus its own tools)"
+        : "on (code mode)"
+      : entry.enabled
+        ? "on"
+        : entry.unverified
+          ? "off (unverified)"
+          : "off";
     lines.push(`### ${entry.name} — ${mark}${entry.enabled ? ` (${entry.tool_count} tools)` : ""}`);
     lines.push(entry.summary);
     lines.push(`Scopes: ${entry.scopes.join(", ")}`);
+    if (entry.via_code) {
+      lines.push(
+        "Reached through jsm_call rather than as tools of its own. Call jsm_search_api to " +
+          "find an operation in this family, or jsm_read_api for its arguments. There is " +
+          "nothing to enable.",
+      );
+    }
     if (entry.enabled) {
       lines.push(`Tools: ${entry.tools.join(", ")}`);
+    } else if (entry.via_code) {
+      // Already explained above; saying "not loaded" here would contradict it.
     } else if (entry.selected && selection.readOnly) {
       lines.push(
         `Selected, but no tools loaded from it: read-only mode withheld them. Every tool in ` +
@@ -127,6 +167,23 @@ function render(reports: ToolsetReport[], selection: Selection): string {
 export function createCapabilitiesTool(
   catalogue: AnyToolDefinition[],
   selection: Selection,
+  /**
+   * Every tool this process registers, including code mode's and this one.
+   *
+   * Taken as an argument rather than derived from `selection.tools`, which
+   * under-reports in code mode: the dispatchers are composed outside the
+   * selection, so a count taken from it would say "0 tools registered" on an
+   * install with several.
+   */
+  registered: AnyToolDefinition[] = selection.tools,
+  /**
+   * Whether jsm_run could be registered, when code mode is on.
+   *
+   * Reported because an absent jsm_run is otherwise indistinguishable from a
+   * server that never had one, and the fix — a newer Node — is not something a
+   * model could guess.
+   */
+  sandbox?: { supported: boolean; reason?: string },
 ): AnyToolDefinition {
   return defineTool({
     name: "jsm_list_capabilities",
@@ -179,6 +236,10 @@ Note: changing JSM_TOOLSETS requires restarting the server. You cannot enable a 
       requested: z.array(z.string()),
       read_only: z.boolean(),
       tool_count: z.number(),
+      code_mode: z.boolean(),
+      script_sandbox: z
+        .object({ available: z.boolean(), reason: z.string().optional() })
+        .optional(),
       toolsets: z.array(z.object({}).passthrough()),
     },
     annotations: {
@@ -193,14 +254,29 @@ Note: changing JSM_TOOLSETS requires restarting the server. You cannot enable a 
       const structured = {
         requested: selection.requested,
         read_only: selection.readOnly,
-        tool_count: selection.tools.length,
+        // +1 for this tool itself: `registered` is the list composeTools built
+        // before appending it.
+        tool_count: registered.length + 1,
+        code_mode: selection.codeToolsets.length > 0,
+        ...(sandbox
+          ? {
+              script_sandbox: {
+                available: sandbox.supported,
+                ...(sandbox.reason ? { reason: sandbox.reason } : {}),
+              },
+            }
+          : {}),
         toolsets: reports,
       };
 
       const text =
         params.response_format === "json"
           ? JSON.stringify(structured, null, 2)
-          : render(reports, selection);
+          : render(reports, selection, structured.tool_count) +
+            (sandbox && !sandbox.supported
+              ? `\n\n**Scripts are unavailable here.** ${sandbox.reason} jsm_call and ` +
+                `jsm_apply reach the same operations one at a time.`
+              : "");
 
       return ok(text, structured);
     },

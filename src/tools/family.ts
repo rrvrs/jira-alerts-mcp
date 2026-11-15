@@ -18,6 +18,14 @@
  * written. Making it structurally mandatory is cheaper than a convention
  * everyone agrees with and nobody enforces.
  *
+ * WHAT THIS DOES GENERATE, as of code mode: each operation's `plan` — the
+ * request as data, for the code API. That belongs here precisely because it is
+ * mechanical, and because generating it from the same expressions the handler
+ * already uses is what makes the two incapable of drifting. The handler
+ * consumes the plan rather than restating the request, so there is one
+ * expression per operation, not two. Fifty-seven tools get a data layer from
+ * this one edit.
+ *
  * The escape hatch is that none of this is privileged: any operation can be
  * omitted here and hand-written as a plain `defineTool` in the same directory.
  * Heartbeats (identified by a query parameter rather than a path id) and the
@@ -36,10 +44,15 @@ import {
   responseFormatField,
   type ResponseFormat,
 } from "../schemas/common.js";
-import { type AnyToolDefinition, defineTool, type EndpointDeclaration } from "./define.js";
-import { executeList } from "./list-executor.js";
+import {
+  type AnyToolDefinition,
+  defineTool,
+  type EndpointDeclaration,
+  type RequestPlan,
+} from "./define.js";
+import { executeListFromPlan } from "./list-executor.js";
 import { executeWrite } from "./execute-write.js";
-import { DEFAULT_DIALECT, pagingQueryNames, type PagingDialect } from "./paging.js";
+import { DEFAULT_DIALECT, pageSizeParams, pagingQueryNames, type PagingDialect } from "./paging.js";
 import type { ToolGroup } from "../toolsets.js";
 
 /** A path parameter belonging to a resource above this one. */
@@ -248,6 +261,33 @@ export function defineListOperation<T, Ctx = undefined>(
     ],
   });
 
+  const dialect = paging ?? DEFAULT_DIALECT;
+
+  // Only the offset dialect reads `offset`; sending it to an endpoint that
+  // declares no paging parameters is a false statement about the endpoint, and
+  // it is the manifest — not the wire — where that does damage. It is withheld
+  // from the render options too, not just from the wire: pagination reports
+  // `next_offset` whenever it knows an offset, and on an unpaged endpoint that
+  // advertises a next page which re-serves the first one.
+  const position = (typed: Record<string, unknown>): { offset?: number } =>
+    dialect.kind === "offset" ? { offset: typed.offset as number } : {};
+
+  const planFor = (params: Record<string, unknown>): RequestPlan => ({
+    method: "GET",
+    path: collectionPath(config, params),
+    // The page size is part of the plan, under the name this endpoint reads.
+    // A plan is the whole request; leaving the page size for a later layer to
+    // add is how `limit` got sent to endpoints that read `size` for months.
+    params: {
+      ...position(params),
+      ...operationParams(op, params),
+      ...pageSizeParams(dialect, params.limit as number),
+    },
+    shape: "collection",
+    itemsKey: config.itemsKey,
+    paging: dialect,
+  });
+
   return defineTool({
     name: op.name,
     toolset: config.toolset,
@@ -267,6 +307,7 @@ export function defineListOperation<T, Ctx = undefined>(
       pagination: paginationOutputShape,
     },
     annotations: ANNOTATIONS.read,
+    plan: planFor,
     handler: async (params, client) => {
       const typed = params as Record<string, unknown> & {
         limit: number;
@@ -278,29 +319,16 @@ export function defineListOperation<T, Ctx = undefined>(
       // calls, one per row, without anything in the type saying so.
       const context = (op.prepare ? await op.prepare(client) : undefined) as Ctx;
 
-      // Only the offset dialect reads `offset`; sending it to an endpoint that
-      // declares no paging parameters is a false statement about the endpoint,
-      // and it is the manifest — not the wire — where that does damage. It is
-      // withheld from executeList too, not just from the wire: pagination
-      // reports `next_offset` whenever it knows an offset, and on an unpaged
-      // endpoint that advertises a next page which re-serves the first one.
-      const dialect = paging ?? DEFAULT_DIALECT;
-      const position = dialect.kind === "offset" ? { offset: typed.offset } : {};
-
-      return executeList<T>({
+      return executeListFromPlan<T>(planFor(typed), {
         client,
-        path: collectionPath(config, typed),
-        params: { ...position, ...operationParams(op, typed) },
         key: config.plural,
         context: `list ${prose(config.plural)}`,
         limit: typed.limit,
-        ...position,
+        ...position(typed),
         format: typed.response_format,
         render: (items) => op.render(items, context),
         emptyMessage: op.emptyMessage,
         hint: op.hint ?? defaultHint(dialect),
-        ...(paging ? { paging } : {}),
-        itemsKey: config.itemsKey,
       });
     },
   });
@@ -347,6 +375,12 @@ export function defineGetOperation<T, Ctx = undefined>(
   config: ResourceConfig,
   op: GetOp<T, Ctx>,
 ): AnyToolDefinition {
+  const planFor = (params: Record<string, unknown>): RequestPlan => ({
+    method: "GET",
+    path: itemPath(config, params, String(params[config.idParam])),
+    shape: "object",
+  });
+
   return defineTool({
     name: op.name,
     toolset: config.toolset,
@@ -361,12 +395,13 @@ export function defineGetOperation<T, Ctx = undefined>(
     },
     outputSchema: { [config.noun]: passthroughItem },
     annotations: ANNOTATIONS.read,
+    plan: planFor,
     handler: async (params, client) => {
       const typed = params as Record<string, unknown>;
-      const id = String(typed[config.idParam]);
+      const plan = planFor(typed);
       try {
         const context = (op.prepare ? await op.prepare(client) : undefined) as Ctx;
-        const item = await client.getOne<T>(itemPath(config, typed, id));
+        const item = await client.getOne<T>(plan.path);
         return ok(op.render(item, context), { [config.noun]: item as Record<string, unknown> });
       } catch (error) {
         return fail(
@@ -384,6 +419,13 @@ export function defineCreateOperation<T>(
   config: ResourceConfig,
   op: WriteOp<T>,
 ): AnyToolDefinition {
+  const planFor = (params: Record<string, unknown>): RequestPlan => ({
+    method: "POST",
+    path: collectionPath(config, params),
+    body: op.toBody(params),
+    shape: "object",
+  });
+
   return defineTool({
     name: op.name,
     toolset: config.toolset,
@@ -393,12 +435,14 @@ export function defineCreateOperation<T>(
     inputSchema: { ...parentShape(config), ...scopedShape(config), ...op.input },
     outputSchema: op.output ?? { [config.noun]: passthroughItem },
     annotations: ANNOTATIONS.create,
-    handler: async (params, client) =>
-      executeWrite<T>(client, {
+    plan: planFor,
+    handler: async (params, client) => {
+      const plan = planFor(params as Record<string, unknown>);
+      return executeWrite<T>(client, {
         label: `Create ${prose(config.noun)}`,
-        method: "POST",
-        path: collectionPath(config, params as Record<string, unknown>),
-        body: op.toBody(params as Record<string, unknown>),
+        method: plan.method,
+        path: plan.path,
+        body: plan.body,
         // Configuration writes answer with the object, not a receipt. Reporting
         // them as async would point the model at a request id that was never
         // issued.
@@ -406,7 +450,8 @@ export function defineCreateOperation<T>(
         subject: { key: config.idParam, noun: prose(config.noun) },
         render: op.render,
         structured: (item) => ({ [config.noun]: item as Record<string, unknown> }),
-      }),
+      });
+    },
   });
 }
 
@@ -414,6 +459,13 @@ export function defineUpdateOperation<T>(
   config: ResourceConfig,
   op: WriteOp<T>,
 ): AnyToolDefinition {
+  const planFor = (params: Record<string, unknown>): RequestPlan => ({
+    method: config.updateMethod ?? "PATCH",
+    path: itemPath(config, params, String(params[config.idParam])),
+    body: op.toBody(params),
+    shape: "object",
+  });
+
   return defineTool({
     name: op.name,
     toolset: config.toolset,
@@ -430,14 +482,16 @@ export function defineUpdateOperation<T>(
     },
     outputSchema: op.output ?? { [config.noun]: passthroughItem },
     annotations: ANNOTATIONS.update,
+    plan: planFor,
     handler: async (params, client) => {
       const typed = params as Record<string, unknown>;
       const id = String(typed[config.idParam]);
+      const plan = planFor(typed);
       return executeWrite<T>(client, {
         label: `Update ${prose(config.noun)}`,
-        method: config.updateMethod ?? "PATCH",
-        path: itemPath(config, typed, id),
-        body: op.toBody(typed),
+        method: plan.method,
+        path: plan.path,
+        body: plan.body,
         mode: "sync",
         subject: { key: config.idParam, value: id, noun: prose(config.noun) },
         render: op.render,
@@ -448,6 +502,12 @@ export function defineUpdateOperation<T>(
 }
 
 export function defineRemoveOperation(config: ResourceConfig, op: RemoveOp): AnyToolDefinition {
+  const planFor = (params: Record<string, unknown>): RequestPlan => ({
+    method: "DELETE",
+    path: itemPath(config, params, String(params[config.idParam])),
+    shape: "empty",
+  });
+
   return defineTool({
     name: op.name,
     toolset: config.toolset,
@@ -461,13 +521,15 @@ export function defineRemoveOperation(config: ResourceConfig, op: RemoveOp): Any
     },
     outputSchema: { deleted: z.boolean(), [config.idParam]: z.string().optional() },
     annotations: ANNOTATIONS.remove,
+    plan: planFor,
     handler: async (params, client) => {
       const typed = params as Record<string, unknown>;
       const id = String(typed[config.idParam]);
+      const plan = planFor(typed);
       return executeWrite(client, {
         label: `Delete ${prose(config.noun)}`,
-        method: "DELETE",
-        path: itemPath(config, typed, id),
+        method: plan.method,
+        path: plan.path,
         mode: "deleted",
         subject: { key: config.idParam, value: id, noun: prose(config.noun) },
       });

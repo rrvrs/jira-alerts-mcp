@@ -3,12 +3,24 @@
  */
 
 import { defineTool } from "../define.js";
-import { alertAction } from "./alert-action.js";
+import { alertAction, alertActionPlan } from "./alert-action.js";
 import {
   addExtraPropertiesShape,
   asyncOutputSchema,
   removeExtraPropertiesShape,
 } from "./shapes.js";
+
+const addPlanFor = (params: {
+  alert_id: string;
+  extra_properties: Record<string, string | number | boolean>;
+}) =>
+  alertActionPlan(params.alert_id, "extra-properties", {
+    extraProperties: params.extra_properties,
+  });
+
+// DELETE with a JSON body, as with tag removal.
+const removePlanFor = (params: { alert_id: string; keys: string[] }) =>
+  alertActionPlan(params.alert_id, "extra-properties", { keys: params.keys }, "DELETE");
 
 export const addAlertExtraProperties = defineTool({
   name: "jsm_add_alert_extra_properties",
@@ -44,10 +56,9 @@ Examples:
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: addPlanFor,
   handler: async (params, client) =>
-    alertAction(client, "Add extra properties", params.alert_id, "extra-properties", {
-      extraProperties: params.extra_properties,
-    }),
+    alertAction(client, "Add extra properties", params.alert_id, addPlanFor(params)),
 });
 
 export const removeAlertExtraProperties = defineTool({
@@ -81,15 +92,7 @@ Constraints and errors:
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: removePlanFor,
   handler: async (params, client) =>
-    alertAction(
-      client,
-      "Remove extra properties",
-      params.alert_id,
-      "extra-properties",
-      {
-        keys: params.keys,
-      },
-      "DELETE",
-    ),
+    alertAction(client, "Remove extra properties", params.alert_id, removePlanFor(params)),
 });

@@ -3,8 +3,11 @@
  */
 
 import { defineTool } from "../define.js";
-import { alertAction } from "./alert-action.js";
+import { alertAction, alertActionPlan } from "./alert-action.js";
 import { asyncOutputSchema, customActionShape } from "./shapes.js";
+
+const planFor = (params: { alert_id: string; action_name: string }) =>
+  alertActionPlan(params.alert_id, "action", { actionName: params.action_name });
 
 export const executeAlertAction = defineTool({
   name: "jsm_execute_alert_action",
@@ -40,8 +43,7 @@ Constraints and errors:
     idempotentHint: false,
     openWorldHint: true,
   },
+  plan: planFor,
   handler: async (params, client) =>
-    alertAction(client, `Run action '${params.action_name}'`, params.alert_id, "action", {
-      actionName: params.action_name,
-    }),
+    alertAction(client, `Run action '${params.action_name}'`, params.alert_id, planFor(params)),
 });

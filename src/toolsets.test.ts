@@ -367,7 +367,12 @@ describe("jsm_list_capabilities", () => {
       toolsets: Array<{ name: string; enabled: boolean; scopes: string[]; tool_count: number }>;
     };
 
-    assert.equal(payload.tool_count, selection.tools.length);
+    // The selection plus jsm_list_capabilities itself, which is registered
+    // regardless and was not previously counted. That off-by-one is why the
+    // README's quickstart said "82 tools rather than the 28" while its toolsets
+    // table said 81 and 27 — the two were counting different things. The honest
+    // number is what a client sees in tools/list.
+    assert.equal(payload.tool_count, selection.tools.length + 1);
     assert.equal(payload.read_only, false);
     assert.deepEqual(
       payload.toolsets.map((entry) => entry.name),

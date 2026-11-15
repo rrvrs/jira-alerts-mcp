@@ -7,8 +7,15 @@
  */
 
 import { defineTool } from "../define.js";
-import { alertAction } from "./alert-action.js";
+import { alertAction, alertActionPlan } from "./alert-action.js";
 import { addTagsShape, asyncOutputSchema, removeTagsShape } from "./shapes.js";
+
+const addPlanFor = (params: { alert_id: string; tags: string[] }) =>
+  alertActionPlan(params.alert_id, "tags", { tags: params.tags });
+
+// DELETE with a JSON body, which is unusual but is what the API specifies.
+const removePlanFor = (params: { alert_id: string; tags: string[] }) =>
+  alertActionPlan(params.alert_id, "tags", { tags: params.tags }, "DELETE");
 
 export const addAlertTags = defineTool({
   name: "jsm_add_alert_tags",
@@ -43,10 +50,9 @@ Examples:
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: addPlanFor,
   handler: async (params, client) =>
-    alertAction(client, "Add tags", params.alert_id, "tags", {
-      tags: params.tags,
-    }),
+    alertAction(client, "Add tags", params.alert_id, addPlanFor(params)),
 });
 
 export const removeAlertTags = defineTool({
@@ -80,15 +86,7 @@ Constraints and errors:
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: removePlanFor,
   handler: async (params, client) =>
-    alertAction(
-      client,
-      "Remove tags",
-      params.alert_id,
-      "tags",
-      {
-        tags: params.tags,
-      },
-      "DELETE",
-    ),
+    alertAction(client, "Remove tags", params.alert_id, removePlanFor(params)),
 });

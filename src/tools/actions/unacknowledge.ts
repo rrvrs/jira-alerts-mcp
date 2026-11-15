@@ -3,8 +3,10 @@
  */
 
 import { defineTool } from "../define.js";
-import { alertAction } from "./alert-action.js";
+import { alertAction, alertActionPlan } from "./alert-action.js";
 import { asyncOutputSchema, unacknowledgeShape } from "./shapes.js";
+
+const planFor = (params: { alert_id: string }) => alertActionPlan(params.alert_id, "unacknowledge");
 
 export const unacknowledgeAlert = defineTool({
   name: "jsm_unacknowledge_alert",
@@ -40,6 +42,7 @@ Constraints and errors:
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: planFor,
   handler: async (params, client) =>
-    alertAction(client, "Unacknowledge", params.alert_id, "unacknowledge"),
+    alertAction(client, "Unacknowledge", params.alert_id, planFor(params)),
 });

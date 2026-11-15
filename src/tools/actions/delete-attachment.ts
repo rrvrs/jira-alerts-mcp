@@ -5,8 +5,16 @@
 import { z } from "zod";
 
 import { alertIdField } from "../../schemas/common.js";
-import { defineTool } from "../define.js";
+import { defineTool, type RequestPlan } from "../define.js";
 import { executeWrite } from "../execute-write.js";
+
+const planFor = (params: { alert_id: string; attachment_id: string }): RequestPlan => ({
+  method: "DELETE",
+  path: `/v1/alerts/${encodeURIComponent(params.alert_id)}/attachments/${encodeURIComponent(
+    params.attachment_id,
+  )}`,
+  shape: "empty",
+});
 
 export const deleteAlertAttachment = defineTool({
   name: "jsm_delete_alert_attachment",
@@ -43,14 +51,15 @@ Constraints and errors:
     idempotentHint: true,
     openWorldHint: true,
   },
-  handler: async (params, client) =>
-    executeWrite(client, {
+  plan: planFor,
+  handler: async (params, client) => {
+    const plan = planFor(params);
+    return executeWrite(client, {
       label: "Delete attachment",
-      method: "DELETE",
-      path: `/v1/alerts/${encodeURIComponent(params.alert_id)}/attachments/${encodeURIComponent(
-        params.attachment_id,
-      )}`,
+      method: plan.method,
+      path: plan.path,
       mode: "deleted",
       subject: { key: "attachment_id", value: params.attachment_id, noun: "attachment" },
-    }),
+    });
+  },
 });

@@ -16,8 +16,9 @@ import { z } from "zod";
 import { renderHeartbeat, renderHeartbeats } from "../../services/render/maintenance.js";
 import type { Heartbeat } from "../../types.js";
 import { responseFormatField } from "../../schemas/common.js";
-import { defineTool, type AnyToolDefinition } from "../define.js";
-import { executeList } from "../list-executor.js";
+import { defineTool, type AnyToolDefinition, type RequestPlan } from "../define.js";
+import { executeListFromPlan } from "../list-executor.js";
+import { DEFAULT_DIALECT, pageSizeParams } from "../paging.js";
 import { executeWrite } from "../execute-write.js";
 import { paginationOutputShape, limitField, offsetField } from "../../schemas/common.js";
 import { teamIdField } from "../teams/shapes.js";
@@ -97,6 +98,50 @@ const createBodyFields = [
 // rather than ignored, drop it from here and from the allowance.
 const updateBodyFields = createBodyFields;
 
+type HeartbeatBody = Parameters<typeof toBody>[0];
+
+const createPlanFor = (params: HeartbeatBody & { team_id: string }): RequestPlan => ({
+  method: "POST",
+  path: path(params.team_id),
+  body: toBody(params),
+  shape: "object",
+});
+
+const updatePlanFor = (params: HeartbeatBody & { team_id: string; name: string }): RequestPlan => ({
+  method: "PATCH",
+  path: path(params.team_id),
+  params: { name: params.name },
+  body: toBody(params),
+  shape: "object",
+});
+
+const deletePlanFor = (params: { team_id: string; name: string }): RequestPlan => ({
+  method: "DELETE",
+  path: path(params.team_id),
+  params: { name: params.name },
+  shape: "empty",
+});
+
+// Every heartbeat write addresses its subject by the `name` QUERY parameter
+// against the collection URL, not by a path id — which is why this family is
+// hand-written rather than generated, and why each plan states its own params.
+const listPlanFor = (params: {
+  team_id: string;
+  name?: string | undefined;
+  limit: number;
+  offset: number;
+}): RequestPlan => ({
+  method: "GET",
+  path: path(params.team_id),
+  params: {
+    offset: params.offset,
+    ...(params.name ? { name: params.name } : {}),
+    ...pageSizeParams(DEFAULT_DIALECT, params.limit),
+  },
+  shape: "collection",
+  paging: DEFAULT_DIALECT,
+});
+
 const listHeartbeats = defineTool({
   name: "jsm_list_heartbeats",
   toolset: "heartbeats",
@@ -136,11 +181,10 @@ Examples:
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: listPlanFor,
   handler: async (params, client) =>
-    executeList<Heartbeat>({
+    executeListFromPlan<Heartbeat>(listPlanFor(params), {
       client,
-      path: path(params.team_id),
-      params: { offset: params.offset, ...(params.name ? { name: params.name } : {}) },
       key: "heartbeats",
       context: "list heartbeats",
       limit: params.limit,
@@ -151,6 +195,15 @@ Examples:
         "This team has no heartbeats, so nothing here will notice a job that stops running. Create one with jsm_create_heartbeat.",
       hint: "Increase 'offset' to see the rest.",
     }),
+});
+
+// A GET that mutates: it resets the timer and clears a firing alert. It is a
+// write however it is spelled, which is why it goes through executeWrite.
+const pingPlanFor = (params: { team_id: string; name: string }): RequestPlan => ({
+  method: "GET",
+  path: `${path(params.team_id)}/ping`,
+  params: { name: params.name },
+  shape: "object",
 });
 
 const pingHeartbeat = defineTool({
@@ -184,6 +237,7 @@ This is what the monitored job itself is meant to call. Sending it by hand tells
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: pingPlanFor,
   handler: async (params, client) =>
     // The ping answers {message: "PONG - Heartbeat received"} and nothing
     // else. Rendering that through renderHeartbeat printed a heartbeat with
@@ -191,9 +245,7 @@ This is what the monitored job itself is meant to call. Sending it by hand tells
     // a heartbeat that exists and is broken. Verified against a live tenant.
     executeWrite<{ message?: string }>(client, {
       label: "Ping heartbeat",
-      method: "GET",
-      path: `${path(params.team_id)}/ping`,
-      params: { name: params.name },
+      ...pingPlanFor(params),
       mode: "sync",
       render: (pong) =>
         `Ping accepted for heartbeat \`${params.name}\`. The API answered: ${
@@ -240,12 +292,11 @@ Examples:
     idempotentHint: false,
     openWorldHint: true,
   },
+  plan: createPlanFor,
   handler: async (params, client) =>
     executeWrite<Heartbeat>(client, {
       label: "Create heartbeat",
-      method: "POST",
-      path: path(params.team_id),
-      body: toBody(params),
+      ...createPlanFor(params),
       mode: "sync",
       render: (beat) => renderHeartbeat(beat),
       structured: (beat) => ({ heartbeat: beat as Record<string, unknown> }),
@@ -284,13 +335,11 @@ Lengthening the interval widens the window in which a dead job goes unnoticed. S
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: updatePlanFor,
   handler: async (params, client) =>
     executeWrite<Heartbeat>(client, {
       label: "Update heartbeat",
-      method: "PATCH",
-      path: path(params.team_id),
-      params: { name: params.name },
-      body: toBody(params),
+      ...updatePlanFor(params),
       mode: "sync",
       render: (beat) => renderHeartbeat(beat),
       structured: (beat) => ({ heartbeat: beat as Record<string, unknown> }),
@@ -320,12 +369,11 @@ Requires delete:ops-config:jira-service-management. That grant belongs to the in
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: deletePlanFor,
   handler: async (params, client) =>
     executeWrite(client, {
       label: "Delete heartbeat",
-      method: "DELETE",
-      path: path(params.team_id),
-      params: { name: params.name },
+      ...deletePlanFor(params),
       mode: "deleted",
       subject: { key: "name", value: params.name, noun: "heartbeat" },
     }),

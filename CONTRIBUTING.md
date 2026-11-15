@@ -65,7 +65,7 @@ Neither allowance is free: the check also fails when the spec *does* declare an 
 
 ## Conventions worth preserving
 
-Four things in this codebase are load-bearing. Changing them by accident is the most likely way to break the server subtly.
+Six things in this codebase are load-bearing. Changing them by accident is the most likely way to break the server subtly.
 
 **1. Every write goes through `executeWrite`.** See [`src/tools/execute-write.ts`](src/tools/execute-write.ts); the alert family reaches it through the one-line [`alertAction`](src/tools/actions/alert-action.ts) helper, which owns the `/v1/alerts/{id}/` prefix. JSM applies alert actions asynchronously and returns a receipt rather than the updated alert, and one executor is what guarantees every write tool reports that receipt the same way and points at `jsm_get_request_status`. A new write tool that renders its own response will teach the model an inconsistent contract, and it will start believing writes have landed when they haven't.
 
@@ -78,6 +78,8 @@ It also owns the page-size parameter, which is not the same for every endpoint �
 This is not tidiness. Those five steps were once copy-pasted into each list handler, and two bugs lived in the copies: an empty result set returned `ok(text)` with no `structuredContent`, which the SDK rejects outright when an `outputSchema` is declared, so "no alerts matched" became `-32602`; and the pagination block was computed from the untruncated page, so `next_offset` skipped every record truncation had dropped. Both had to be fixed four times. If you find yourself hand-rolling a list handler, that is the bug re-entering.
 
 Two rules follow from it: an empty page is an ordinary answer and must still ship a structured payload (use `emptyResult`), and `count`/`next_offset` describe what the response actually contains, never what the API returned.
+
+The file is now in three parts, and which one you want matters. `fetchList` issues the GET and normalises the envelope, and nothing else. `executeListFromPlan` adds the empty-check, the truncation, the pagination block and the render. `executeList` adds the page-size parameter on top, for the hand-written callers that pass query parameters without it. Code mode stops at `fetchList` on purpose: the two layers above it trim to a model's reading budget, and a script filtering two thousand alerts wants the two thousand.
 
 **3. `inputSchema` takes a raw Zod shape, not a `z.object(...)`.** Tools define a plain object of Zod types, and [`defineTool`](src/tools/define.ts) infers the handler's `params` from it, so no tool needs to write `z.infer<z.ZodObject<typeof shape>>` by hand. Keep writing raw shapes — but the reason is inference, not a hard SDK requirement.
 
@@ -93,6 +95,20 @@ A family you cannot verify still ships — the code is probably right, and someo
 
 Removing an `unverified` marker is how a family graduates. Do it in a commit that says which tool was run, against what, and what came back.
 
+**5. A tool's `plan` and its handler issue the same request.** A [`RequestPlan`](src/tools/define.ts) is the request as data — method, path, params, body — and it is what the code API dispatches. That makes it a *second* description of something the handler already describes, and this repo's hardest-won lesson is that a second description which can drift from the code is worth nothing. It is the argument `define.ts` makes for the `endpoint` manifest, and the reason [`scripts/check-endpoints.mjs`](scripts/check-endpoints.mjs) exists.
+
+Three things keep it honest, and they compound:
+
+- A catalogue sweep asserts every plan's method and de-interpolated path match one of the tool's declared `endpoint` entries, and that its params and body fields are names that endpoint declares. `endpoint` is already checked against the vendored OpenAPI spec, so a plan is **transitively spec-checked** with no new manifest to maintain.
+- A parity sweep drives the classic tool through the recording stub client, computes the plan from the same arguments, and asserts the handler issued the request the plan describes. One test, every tool, and every tool added later.
+- The cheapest way to pass both is not to write the request twice. Have the handler **consume** its own plan — `const plan = planFor(params)` and then `method: plan.method, path: plan.path` — so there is one expression per tool. That is what [`family.ts`](src/tools/family.ts) does for fifty-six of them and what [`alertAction`](src/tools/actions/alert-action.ts) does for thirteen more.
+
+`fetch` is the escape hatch, for an operation that is not one request: the two on-call lookups and the schedule timeline each issue several calls and merge them. It is **not** checkable against `endpoint`, which is exactly why a test caps it at three tools. A fourth should have to argue for itself in review rather than arrive quietly. And charge `ctx.budget` for anything a composite does — or rather, make its calls through the client the dispatcher handed you, which charges for you. See `budgetedClient`: the point of wrapping the client is that a request which is not charged is a request that was not made.
+
+**6. Nothing in a request path writes to stdout.** stdout is the protocol channel. A stray `console.log` puts non-JSON-RPC bytes into the stream a client is parsing, and the client's failure mode is "the server is broken" with nothing pointing at the cause. Use [`src/services/log.ts`](src/services/log.ts), which writes JSON to stderr and cannot be configured to do otherwise.
+
+What is logged at `info` is operation names, counts and durations. What is not is arguments, request bodies and response bodies — alert messages, descriptions and notes are written by whatever integration fired them, so they are untrusted input that may contain anything, and a log file is a place people forget to treat as sensitive. `JSM_LOG_LEVEL=debug` widens it for someone who has decided to.
+
 2.0.0 removed two families outright rather than quarantining them — alert policies and custom user roles, seventeen tools that answered `403 You are not authorized` under two separate credentials, one holding Jira `ADMINISTER`. Quarantine is for "we could not test this here"; deletion is for "no credential we can plausibly get will ever run this".
 
 ## Adding a tool
@@ -107,6 +123,7 @@ Removing an `unverified` marker is how a family graduates. Do it in a commit tha
 8. Set `annotations` honestly — `readOnlyHint`, `destructiveHint`, `idempotentHint`. Clients use these to decide what to auto-approve, and `readOnlyHint` is also the filter `JSM_READ_ONLY` applies, so a dishonest one now hands a write tool to someone who asked for a read-only server.
 9. Add tests, and drive them through `connectTools` from [`src/tools/test-support.ts`](src/tools/test-support.ts) rather than calling the handler directly. Calling handlers directly skips the SDK's output-schema validation — that is exactly how the empty-result bug above shipped with a green suite asserting it was fine.
 10. Update the tool table in [`TOOLS.md`](TOOLS.md).
+11. Add a `plan` — the request as data — so the operation is reachable from code mode. For a family tool the factory does it for you. For a hand-written one, write it once and have your handler consume it; the parity and catalogue sweeps will tell you immediately if the two disagree. If your tool genuinely is not one request, use `fetch` instead and expect review to ask why, because `fetch` is the thing no test can check against the spec.
 
 Adding a tool to an existing toolset does **not** change what existing installs see. The default selection is the `responder` profile, and `core` is a frozen list of names in `src/toolsets.ts` guarded by a snapshot test — an install pinned to `core` keeps exactly those names even when `core` is combined with another toolset, so its auto-approval surface cannot widen under it on a patch bump. Widening either default is a separate, deliberate change — edit the array and the snapshot together, and say so in the release notes.
 

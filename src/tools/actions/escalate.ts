@@ -3,8 +3,11 @@
  */
 
 import { defineTool } from "../define.js";
-import { alertAction } from "./alert-action.js";
+import { alertAction, alertActionPlan } from "./alert-action.js";
 import { asyncOutputSchema, escalateShape } from "./shapes.js";
+
+const planFor = (params: { alert_id: string; escalation_id: string }) =>
+  alertActionPlan(params.alert_id, "escalate", { escalationId: params.escalation_id });
 
 export const escalateAlert = defineTool({
   name: "jsm_escalate_alert",
@@ -44,8 +47,7 @@ Constraints and errors:
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: planFor,
   handler: async (params, client) =>
-    alertAction(client, "Escalate", params.alert_id, "escalate", {
-      escalationId: params.escalation_id,
-    }),
+    alertAction(client, "Escalate", params.alert_id, planFor(params)),
 });

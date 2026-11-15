@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { renderRoutingRule, renderRoutingRules } from "../../services/render/routing.js";
 import type { RoutingRule } from "../../types.js";
-import { defineTool } from "../define.js";
+import { defineTool, type RequestPlan } from "../define.js";
 import { executeWrite } from "../execute-write.js";
 import { defineResourceFamily, type ResourceConfig } from "../family.js";
 import { teamIdField } from "../teams/shapes.js";
@@ -156,6 +156,20 @@ Requires delete:ops-config:jira-service-management. That grant belongs to the in
   },
 });
 
+const reorderPlanFor = (params: {
+  team_id: string;
+  routing_rule_id: string;
+  order: number;
+}): RequestPlan => ({
+  method: "PATCH",
+  path:
+    `/v1/teams/${encodeURIComponent(params.team_id)}/routing-rules/` +
+    `${encodeURIComponent(params.routing_rule_id)}/change-order`,
+  body: { order: params.order },
+  // 204, no body — see the handler's note.
+  shape: "empty",
+});
+
 export const changeRoutingRuleOrder = defineTool({
   name: "jsm_change_routing_rule_order",
   toolset: "routing",
@@ -191,18 +205,19 @@ Read jsm_list_routing_rules first and say what the new order will be before call
     idempotentHint: true,
     openWorldHint: true,
   },
-  handler: async (params, client) =>
-    executeWrite<RoutingRule>(client, {
+  plan: reorderPlanFor,
+  handler: async (params, client) => {
+    const plan = reorderPlanFor(params);
+    return executeWrite<RoutingRule>(client, {
       label: "Reorder routing rule",
-      method: "PATCH",
-      path:
-        `/v1/teams/${encodeURIComponent(params.team_id)}/routing-rules/` +
-        `${encodeURIComponent(params.routing_rule_id)}/change-order`,
-      body: { order: params.order },
+      method: plan.method,
+      path: plan.path,
+      body: plan.body,
       // 204, no body. Declaring the updated rule as the output made every call
       // fail validation with "expected object, received string" — verified
       // against a live tenant on 2026-09-05.
       mode: "confirmed",
       subject: { key: "routing_rule_id", value: params.routing_rule_id, noun: "routing rule" },
-    }),
+    });
+  },
 });

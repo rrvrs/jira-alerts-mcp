@@ -71,6 +71,47 @@ Error handling:
     idempotentHint: true,
     openWorldHint: true,
   },
+  /**
+   * The raw answer, for the code API.
+   *
+   * `fetch` rather than `plan` because this is not one request: it resolves the
+   * schedule, asks /on-calls and the timeline in parallel, and batches an
+   * identity lookup. A script could issue those itself, and would get the
+   * TIMELINE_LOOKBACK_MS correction wrong — the API starts a range at the
+   * beginning of the interval containing the date given, so asking for the
+   * current week alone clips a shift that began the night before and reports a
+   * handover that never happened. Exposing the composite is the point: code
+   * execution is for the composition nobody anticipated, not a reason to make
+   * everyone re-derive the ones already got right.
+   *
+   * The client handed in here is already budgeted, so each of these calls is
+   * charged, deadline-bound and queued without this function doing anything.
+   */
+  fetch: async (params, client) => {
+    const schedule = await resolveScheduleId(
+      client,
+      params.schedule_id,
+      params.schedule_identifier_type,
+    );
+    const answer = await answerOnCall(client, {
+      scheduleId: schedule.id,
+      instant: params.date ? new Date(params.date) : new Date(),
+      next: false,
+      flat: params.flat,
+      date: params.date,
+    });
+    const directory = await resolveIdentities(client, answer.responders);
+
+    return {
+      schedule: { id: schedule.id, name: schedule.name ?? null },
+      on_call: answer.raw,
+      participants: identifyResponders(answer.responders, directory),
+      shift: answer.shift ?? null,
+      // Carried, not dropped: these say what could not be determined, and a
+      // script reporting "nobody is on call" without them would be guessing.
+      notes: answer.notes,
+    };
+  },
   handler: async (params, client) => {
     try {
       const schedule = await resolveScheduleId(

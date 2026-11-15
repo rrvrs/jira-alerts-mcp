@@ -16,12 +16,20 @@ import type { NextFunction, Request, Response } from "express";
 
 import { SERVER_NAME, SERVER_VERSION } from "./constants.js";
 import { JsmClient, JsmConfigError, loadConfig } from "./services/client.js";
-import { allTools, buildServer } from "./server.js";
+import { allTools, buildServer, composeTools } from "./server.js";
+import { CodeLimitsError, LIMIT_VARIABLES, resolveLimits } from "./tools/code/limits.js";
 import { resolveSelection, ToolsetSelectionError, type Selection } from "./toolsets.js";
 
-function describe(selection: Selection): string {
+function describe(client: JsmClient, selection: Selection): string {
+  // Counted from the composed list, not from the selection: code mode's
+  // dispatchers and jsm_list_capabilities are added outside it, so a count
+  // taken from the selection would log "0 tools" on a code-mode install.
+  const registered = composeTools(client, selection).length;
   return (
-    `${selection.tools.length} tools from ${selection.requested.join(", ")}` +
+    `${registered} tools from ${selection.requested.join(", ")}` +
+    (selection.codeToolsets.length
+      ? ` (code mode: ${selection.codeToolsets.length} families via jsm_call)`
+      : "") +
     (selection.readOnly ? ", read-only" : "")
   );
 }
@@ -31,7 +39,9 @@ async function runStdio(client: JsmClient, selection: Selection): Promise<void> 
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // stdout is the protocol channel — all logging goes to stderr.
-  console.error(`${SERVER_NAME} v${SERVER_VERSION} running via stdio — ${describe(selection)}`);
+  console.error(
+    `${SERVER_NAME} v${SERVER_VERSION} running via stdio — ${describe(client, selection)}`,
+  );
 }
 
 async function runHttp(client: JsmClient, selection: Selection): Promise<void> {
@@ -128,7 +138,7 @@ async function runHttp(client: JsmClient, selection: Selection): Promise<void> {
   app.listen(port, host, () => {
     console.error(
       `${SERVER_NAME} v${SERVER_VERSION} listening on http://${host}:${port}/mcp — ` +
-        describe(selection),
+        describe(client, selection),
     );
   });
 }
@@ -146,17 +156,29 @@ async function main(): Promise<void> {
         "  JSM_EMAIL       Atlassian account email (with JSM_API_TOKEN)",
         "  JSM_API_TOKEN   Atlassian API token",
         "  JSM_OAUTH_TOKEN OAuth 3LO bearer token (alternative to email + token)",
-        "  JSM_TOOLSETS    Comma-separated toolsets or profiles to register.",
+        "  JSM_TOOLSETS    Comma-separated toolsets, profiles or modes to register.",
         "                  Unset registers 'responder'. Call jsm_list_capabilities",
         "                  for the current names, counts and scopes.",
         "                  'all' means every VERIFIED toolset. Families that could",
         "                  not be verified against a live tenant ship but load only",
         "                  when named: JSM_TOOLSETS=all,heartbeats",
-        "  JSM_READ_ONLY   'true' withholds every write tool",
+        "                  'code' registers five dispatch tools instead of ninety-odd",
+        "                  and reaches every verified family through them. It composes:",
+        "                  JSM_TOOLSETS=code,alert-actions also registers the classic",
+        "                  alert tools, so those writes keep their own approvals.",
+        "  JSM_READ_ONLY   'true' withholds every write tool, jsm_apply included",
         "  TRANSPORT       'stdio' (default) or 'http'",
         "  PORT / HOST     HTTP transport bind settings (default 127.0.0.1:3000)",
         "  ALLOWED_HOSTS   Comma-separated Host allowlist for the HTTP transport;",
         "                  required when binding beyond loopback",
+        "  JSM_LOG_LEVEL   error | warn | info (default) | debug. Logs are JSON, one",
+        "                  object per line, on stderr. Code mode writes one audit line",
+        "                  per invocation naming the operations it called.",
+        "",
+        "Code mode budgets (per call; each has a hard ceiling configuration cannot raise):",
+        `  ${LIMIT_VARIABLES.join("\n  ")}`,
+        "  JSM_CODE_DESTRUCTIVE  'true' lets jsm_apply call update and delete",
+        "                        operations. Default off.",
         "",
         "Flags (override the environment):",
         "  --toolsets=a,b  same as JSM_TOOLSETS",
@@ -175,6 +197,19 @@ async function main(): Promise<void> {
     selection = resolveSelection(allTools, { env: process.env, argv: process.argv });
   } catch (error) {
     if (error instanceof ToolsetSelectionError) {
+      console.error(`Startup failed: ${error.message}`);
+      process.exit(1);
+    }
+    throw error;
+  }
+
+  // Resolved here purely to fail fast: the code tools resolve their own copy,
+  // and a bad budget should stop the server at startup rather than surfacing on
+  // the first jsm_call an hour later.
+  try {
+    resolveLimits(process.env);
+  } catch (error) {
+    if (error instanceof CodeLimitsError) {
       console.error(`Startup failed: ${error.message}`);
       process.exit(1);
     }

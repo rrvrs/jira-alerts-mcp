@@ -3,8 +3,11 @@
  */
 
 import { defineTool } from "../define.js";
-import { alertAction } from "./alert-action.js";
+import { alertAction, alertActionPlan } from "./alert-action.js";
 import { asyncOutputSchema, assignShape } from "./shapes.js";
+
+const planFor = (params: { alert_id: string; account_id: string }) =>
+  alertActionPlan(params.alert_id, "assign", { accountId: params.account_id });
 
 export const assignAlert = defineTool({
   name: "jsm_assign_alert",
@@ -42,8 +45,7 @@ Constraints and errors:
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: planFor,
   handler: async (params, client) =>
-    alertAction(client, "Assign", params.alert_id, "assign", {
-      accountId: params.account_id,
-    }),
+    alertAction(client, "Assign", params.alert_id, planFor(params)),
 });

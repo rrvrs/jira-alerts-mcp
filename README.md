@@ -319,6 +319,7 @@ Plus four **profiles**, which are bundles of the above:
 | Profile | Contents | Tools |
 |---|---|---|
 | `responder` | **The default.** `alerts` + `alert-actions` + `oncall` | 27 |
+| `code` | Every verified toolset, reached through five dispatch tools — see [Code mode](#code-mode) | 5 |
 | `core` | The thirteen tools that shipped before toolsets existed, plus `jsm_create_alert` | 14 |
 | `admin` | `oncall` + `schedules` + `teams` + `maintenance` + `routing` — configuration, not incidents | 58 |
 | `all` | Every **verified** toolset | 81 |
@@ -390,6 +391,163 @@ team. Alerts and schedules hang off a team's Operations page, so credentials tha
 can't see the team will get **empty lists rather than errors**.
 
 ---
+
+### Code mode
+
+`JSM_TOOLSETS=code` registers five tools instead of ninety-odd, and reaches every
+verified family through them:
+
+| Tool | What it does |
+|---|---|
+| `jsm_search_api` | Search the whole catalogue by keyword, at three levels of detail |
+| `jsm_read_api` | Full TypeScript argument types and documentation for named operations |
+| `jsm_call` | Call one read operation and get the API's data back, unrendered |
+| `jsm_run` | Run a read-only script and get back only what it logs |
+| `jsm_apply` | Call one write operation, so your client approves it by name |
+
+```jsonc
+"env": { "JSM_TOOLSETS": "code" }
+```
+
+The operation name becomes an argument, so `jsm_call` with
+`operation="listAlerts"` makes the same request `jsm_list_alerts` does. Names are
+mechanical — drop the `jsm_` prefix, camelCase the rest — and both spellings work
+everywhere.
+
+**What it costs, measured with `npm run measure:context`:**
+
+| Selection | Tools | `tools/list` | ≈ tokens |
+|---|---|---|---|
+| every toolset named explicitly | 95 | 210,148 chars | 52,500 |
+| `responder` (the default) | 28 | 74,494 chars | 18,600 |
+| **`code`** | **6** | **27,744 chars** | **6,900** |
+
+That is 63% less than the default and 87% less than the full catalogue, while
+reaching **81 operations rather than 27** — because in code mode an operation
+nobody calls costs nothing, so there is no reason to ration the surface. The
+token column is `chars / 4`, an estimate; characters are what the transport
+sends. These are this server's numbers, not the ones from
+[Anthropic's write-up](https://www.anthropic.com/engineering/code-execution-with-mcp)
+that prompted the design — that baseline is a multi-server aggregate with no
+toolset mechanism, and this server had already paid part of that cost.
+
+**It composes.** `code` sets the mode for its own families; any other name still
+registers its tools as before:
+
+```jsonc
+"env": { "JSM_TOOLSETS": "code,alert-actions" }   // dispatchers + the 18 classic alert tools
+```
+
+That is the recommended shape if you auto-approve anything. It is also how you
+reach a [quarantined family](#what-has-and-has-not-been-verified) in code mode:
+`code` expands to the verified toolsets only, exactly as `all` does, so
+`JSM_TOOLSETS=code,heartbeats` adds the heartbeat tools as classic ones.
+
+#### Scripts: taking the data out too
+
+Smaller tool definitions are only half of it. `jsm_run` takes a JavaScript
+snippet, runs it next to the API, and returns **only what it logs**:
+
+```js
+const all = await jsm.listAllSchedules({});
+const off = all.items.filter(s => s.enabled === false);
+console.log(`${off.length} of ${all.items.length} schedules are disabled`);
+```
+
+Two hundred schedules are read, twenty are counted, and one sentence reaches the
+model. `await` works at the top level, operations are called as
+`await jsm.<operation>(args)` with the same snake_case arguments `jsm_read_api`
+documents, and `jsm.listAll<Thing>(args, { max })` walks every page. A failed
+operation throws an error carrying `.status`, `.operation` and `.retryable`, so a
+script can branch on a 404 rather than parse prose.
+
+**The sandbox**, in two layers. The script runs in its own empty JavaScript
+realm — a `vm` context whose only globals are `jsm` and `console`, so there is no
+`process`, `require`, `import`, `fetch`, `eval` or timer for it to find. That
+realm lives inside a child `node --permission` process spawned with an empty
+environment, which is denied the filesystem, sockets, DNS, subprocesses and
+worker threads (`ERR_ACCESS_DENIED` on each, checked by a self-test before the
+first script runs). The Atlassian credential is not hidden from the script — it
+is not there. Every API call the script makes is a message to this server, which
+holds the credential and makes the request. Each script gets a fresh process, so
+nothing carries over between runs, and there is no filesystem to persist to.
+
+**`jsm_run` needs Node 25 or later.** Node's permission model only denies
+network access from v25; on Node 24 — which the rest of this server supports —
+`--permission` leaves sockets open, so `jsm_run` is not registered there and
+`jsm_list_capabilities` says why. Everything else in code mode works on 24.
+
+**It can only read.** Every operation a script can call issues a `GET`, enforced
+in the dispatcher rather than documented as a convention. That is what keeps the
+threat model short: alert messages and notes are written by whatever integration
+fired them and they reach the model's context, so a model acting on instructions
+found there can write a script — and a script that cannot write cannot be made to
+delete a schedule. Writes stay in `jsm_apply`, one per call.
+
+The honest caveats are in
+[SECURITY.md](SECURITY.md#the-script-sandbox): the permission model's network
+gating is recent, and a `vm` context is not a security mechanism on its own —
+which is why neither layer is relied on alone. The plan for this work preferred a
+WebAssembly interpreter, and its spike failed; that is written up in
+`src/tools/code/engine.ts`.
+
+#### Writes, and the approval you are giving
+
+Thirty-seven of these operations are destructive — every update and every
+delete. Today each prompts on its own, with its own name in your client's dialog.
+A single dispatcher that could reach all thirty-seven would carry one annotation
+and therefore **one** approval, granted once, for a tool whose description says
+"writes things". That would be worse than the tools it replaces, so:
+
+- `jsm_call` cannot write at all. Every operation it reaches issues a `GET`, so
+  it is honestly `readOnlyHint` and safe to auto-approve.
+- `jsm_apply` takes **one** operation per call, as an argument — so the operation
+  name is in what your client shows you before you say yes. It is annotated
+  destructive, so nothing auto-approves it.
+- A destructive operation additionally needs `JSM_CODE_DESTRUCTIVE=true`. Not an
+  annotation and not a model argument: some clients auto-approve by tool name and
+  some read no annotations at all, so the only place this can be enforced
+  regardless of client behaviour is in the server.
+- `JSM_READ_ONLY=true` removes `jsm_apply` entirely, as it does every other write
+  tool.
+
+One convenience genuinely regresses: `jsm_acknowledge_alert` is marked
+non-destructive today and your client may auto-approve it, where `jsm_apply` will
+prompt. `JSM_TOOLSETS=code,alert-actions` is the fix.
+
+#### Budgets and logging
+
+A classic tool call is one HTTP request, so your client is the rate limiter. A
+dispatched call can page, so the ceiling has to live in the server. Per call:
+
+| Variable | Default | Hard limit |
+|---|---|---|
+| `JSM_CODE_TIMEOUT_MS` | 10,000 | 60,000 |
+| `JSM_CODE_MAX_REQUESTS` | 60 | 200 |
+| `JSM_CODE_MAX_RECORDS` | 5,000 | 20,000 |
+| `JSM_CODE_MAX_PAGES` | 50 | 200 |
+| `JSM_CODE_MAX_INFLIGHT` | 4 | 8 |
+
+A script additionally gets 64MB of heap, at most
+65,536 characters of source, and shares a cap of
+2 sandbox processes across the whole server — over that,
+`jsm_run` returns a retryable error rather than queueing, because a call that
+hangs is indistinguishable from a broken server.
+
+The hard limits cannot be raised by configuration, and a value outside the range
+stops the server at startup rather than being silently clamped. Outbound requests
+are capped at `JSM_CODE_MAX_INFLIGHT` concurrently and a 429 is retried once,
+honouring `Retry-After` — code mode's first visible effect on a busy site should
+not be rate-limit errors the classic tools never produced.
+
+`JSM_LOG_LEVEL` (`error`, `warn`, `info`, `debug`; default `info`) controls
+structured logging to **stderr**, one JSON object per line. Code mode writes one
+line per invocation naming the operations it called, the request and record
+counts, and the duration — because a dispatched write does not carry its
+operation in the tool name, so the transcript alone stops answering "what did
+this server do with my credential". Arguments and response bodies are not logged:
+alert content is written by whatever integration fired it, and a log file is a
+place people forget to treat as sensitive.
 
 ## Example
 
@@ -521,11 +679,13 @@ src/
 ├── constants.ts             # API root, limits
 ├── types.ts                 # JSM API interfaces
 ├── schemas/common.ts        # Zod fragments shared across families
+├── codegen/                 # Zod shapes -> TypeScript signatures, for jsm_read_api
 ├── services/
 │   ├── client.ts            # auth, request, envelope normalisation, error mapping
 │   ├── directory.ts         # resolves bare Atlassian ids to names
 │   ├── name-cache.ts        # one registry for every process-wide cache
 │   ├── format.ts            # markdown rendering, truncation, result envelopes
+│   ├── log.ts               # structured stderr logging
 │   └── render/              # per-family renderers
 └── tools/
     ├── define.ts            # defineTool() + registerTools()
@@ -535,6 +695,7 @@ src/
     ├── paging.ts            # the paging dialects each endpoint wants
     ├── capabilities.ts      # jsm_list_capabilities
     ├── test-support.ts      # stub client and in-memory MCP harness
+    ├── code/                # code mode: registry, dispatcher, budgets, sandbox, the five tools
     ├── alerts/              # alert reads
     ├── actions/             # alert writes
     ├── oncall/              # who is on call now and next
