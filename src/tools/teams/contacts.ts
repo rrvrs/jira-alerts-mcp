@@ -14,7 +14,7 @@ import {
   renderContacts,
 } from "../../services/render/teams.js";
 import type { Contact } from "../../types.js";
-import { defineTool } from "../define.js";
+import { defineTool, type RequestPlan } from "../define.js";
 import { executeWrite } from "../execute-write.js";
 import { defineResourceFamily, type ResourceConfig } from "../family.js";
 
@@ -144,6 +144,11 @@ Requires delete:ops-config:jira-service-management. That grant belongs to the in
 /** activate and deactivate: PATCH to an action sub-path, no body. */
 function contactSwitch(name: string, action: "activate" | "deactivate") {
   const activating = action === "activate";
+  const planFor = (params: { contact_id: string }): RequestPlan => ({
+    method: "PATCH",
+    path: `/v1/users/contacts/${encodeURIComponent(params.contact_id)}/${action}`,
+    shape: "object",
+  });
   return defineTool({
     name,
     toolset: "teams",
@@ -176,11 +181,11 @@ ${
       idempotentHint: true,
       openWorldHint: true,
     },
+    plan: planFor,
     handler: async (params, client) =>
       executeWrite<Contact>(client, {
         label: `${activating ? "Activate" : "Deactivate"} contact`,
-        method: "PATCH",
-        path: `/v1/users/contacts/${encodeURIComponent(params.contact_id)}/${action}`,
+        ...planFor(params),
         mode: "sync",
         subject: { key: "contact_id", value: params.contact_id, noun: "contact" },
         render: (contact) => renderContactReceipt(contact),

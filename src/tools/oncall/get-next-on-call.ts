@@ -70,6 +70,30 @@ Error handling:
     idempotentHint: true,
     openWorldHint: true,
   },
+  /** The raw answer, for the code API. See the note in get-on-call.ts. */
+  fetch: async (params, client) => {
+    const schedule = await resolveScheduleId(
+      client,
+      params.schedule_id,
+      params.schedule_identifier_type,
+    );
+    const answer = await answerOnCall(client, {
+      scheduleId: schedule.id,
+      instant: params.date ? new Date(params.date) : new Date(),
+      next: true,
+      flat: params.flat,
+      date: params.date,
+    });
+    const directory = await resolveIdentities(client, answer.responders);
+
+    return {
+      schedule: { id: schedule.id, name: schedule.name ?? null },
+      next_on_call: answer.raw,
+      participants: identifyResponders(answer.responders, directory),
+      shift: answer.shift ?? null,
+      notes: answer.notes,
+    };
+  },
   handler: async (params, client) => {
     try {
       const schedule = await resolveScheduleId(

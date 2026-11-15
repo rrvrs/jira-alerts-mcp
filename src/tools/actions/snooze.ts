@@ -3,8 +3,11 @@
  */
 
 import { defineTool } from "../define.js";
-import { alertAction } from "./alert-action.js";
+import { alertAction, alertActionPlan } from "./alert-action.js";
 import { asyncOutputSchema, snoozeShape } from "./shapes.js";
+
+const planFor = (params: { alert_id: string; end_time: string }) =>
+  alertActionPlan(params.alert_id, "snooze", { endTime: params.end_time });
 
 export const snoozeAlert = defineTool({
   name: "jsm_snooze_alert",
@@ -43,8 +46,7 @@ Constraints and errors:
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: planFor,
   handler: async (params, client) =>
-    alertAction(client, "Snooze", params.alert_id, "snooze", {
-      endTime: params.end_time,
-    }),
+    alertAction(client, "Snooze", params.alert_id, planFor(params)),
 });

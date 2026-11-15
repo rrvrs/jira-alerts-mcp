@@ -3,8 +3,11 @@
  */
 
 import { defineTool } from "../define.js";
-import { alertAction } from "./alert-action.js";
+import { alertAction, alertActionPlan } from "./alert-action.js";
 import { asyncOutputSchema, addNoteShape } from "./shapes.js";
+
+const planFor = (params: { alert_id: string; note: string }) =>
+  alertActionPlan(params.alert_id, "notes", { note: params.note });
 
 export const addAlertNote = defineTool({
   name: "jsm_add_alert_note",
@@ -39,8 +42,7 @@ Examples:
     idempotentHint: false,
     openWorldHint: true,
   },
+  plan: planFor,
   handler: async (params, client) =>
-    alertAction(client, "Add note", params.alert_id, "notes", {
-      note: params.note,
-    }),
+    alertAction(client, "Add note", params.alert_id, planFor(params)),
 });

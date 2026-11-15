@@ -7,10 +7,33 @@ import { z } from "zod";
 import { MAX_ALERT_WINDOW } from "../../constants.js";
 import { fail, renderAlertLine } from "../../services/format.js";
 import type { Alert } from "../../types.js";
-import { defineTool } from "../define.js";
-import { executeList } from "../list-executor.js";
+import { defineTool, type RequestPlan } from "../define.js";
+import { executeListFromPlan } from "../list-executor.js";
+import { DEFAULT_DIALECT, pageSizeParams } from "../paging.js";
 import { paginationOutputShape } from "../../schemas/common.js";
 import { alertOutputShape, listAlertsShape } from "./shapes.js";
+
+const planFor = (params: {
+  query?: string | undefined;
+  limit: number;
+  offset: number;
+  sort: string;
+  order: string;
+}): RequestPlan => ({
+  method: "GET",
+  path: "/v1/alerts",
+  // The page size is in the plan, under the name this endpoint reads: `size`.
+  // A plan is the whole request.
+  params: {
+    query: params.query,
+    offset: params.offset,
+    sort: params.sort,
+    order: params.order,
+    ...pageSizeParams(DEFAULT_DIALECT, params.limit),
+  },
+  shape: "collection",
+  paging: DEFAULT_DIALECT,
+});
 
 export const listAlerts = defineTool({
   name: "jsm_list_alerts",
@@ -72,6 +95,7 @@ Constraints and errors:
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: planFor,
   handler: async (params, client) => {
     // Reject locally rather than spending a round trip on a guaranteed 400.
     if (params.offset + params.limit > MAX_ALERT_WINDOW) {
@@ -81,16 +105,8 @@ Constraints and errors:
       );
     }
 
-    return executeList<Alert>({
+    return executeListFromPlan<Alert>(planFor(params), {
       client,
-      path: "/v1/alerts",
-      // No page size here: executeList sends it as `size`.
-      params: {
-        query: params.query,
-        offset: params.offset,
-        sort: params.sort,
-        order: params.order,
-      },
       key: "alerts",
       context: "list alerts",
       limit: params.limit,

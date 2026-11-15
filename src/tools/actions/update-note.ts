@@ -9,7 +9,7 @@
 
 import { renderNote } from "../../services/format.js";
 import type { AlertNote } from "../../types.js";
-import { defineTool } from "../define.js";
+import { defineTool, type RequestPlan } from "../define.js";
 import { executeWrite } from "../execute-write.js";
 import {
   deleteNoteShape,
@@ -20,6 +20,23 @@ import {
 
 const notePath = (alertId: string, noteId: string) =>
   `/v1/alerts/${encodeURIComponent(alertId)}/notes/${encodeURIComponent(noteId)}`;
+
+const updatePlanFor = (params: {
+  alert_id: string;
+  note_id: string;
+  note: string;
+}): RequestPlan => ({
+  method: "PATCH",
+  path: notePath(params.alert_id, params.note_id),
+  body: { note: params.note },
+  shape: "object",
+});
+
+const deletePlanFor = (params: { alert_id: string; note_id: string }): RequestPlan => ({
+  method: "DELETE",
+  path: notePath(params.alert_id, params.note_id),
+  shape: "empty",
+});
 
 export const updateAlertNote = defineTool({
   name: "jsm_update_alert_note",
@@ -55,16 +72,19 @@ Constraints and errors:
     idempotentHint: true,
     openWorldHint: true,
   },
-  handler: async (params, client) =>
-    executeWrite<AlertNote>(client, {
+  plan: updatePlanFor,
+  handler: async (params, client) => {
+    const plan = updatePlanFor(params);
+    return executeWrite<AlertNote>(client, {
       label: "Update note",
-      method: "PATCH",
-      path: notePath(params.alert_id, params.note_id),
-      body: { note: params.note },
+      method: plan.method,
+      path: plan.path,
+      body: plan.body,
       mode: "sync",
       subject: { key: "alert_id", value: params.alert_id, noun: "alert" },
       render: (note) => renderNote(note),
-    }),
+    });
+  },
 });
 
 export const deleteAlertNote = defineTool({
@@ -96,12 +116,15 @@ Constraints and errors:
     idempotentHint: true,
     openWorldHint: true,
   },
-  handler: async (params, client) =>
-    executeWrite(client, {
+  plan: deletePlanFor,
+  handler: async (params, client) => {
+    const plan = deletePlanFor(params);
+    return executeWrite(client, {
       label: "Delete note",
-      method: "DELETE",
-      path: notePath(params.alert_id, params.note_id),
+      method: plan.method,
+      path: plan.path,
       mode: "deleted",
       subject: { key: "note_id", value: params.note_id, noun: "note" },
-    }),
+    });
+  },
 });

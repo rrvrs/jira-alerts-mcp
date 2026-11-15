@@ -12,7 +12,7 @@ import { z } from "zod";
 
 import { renderMaintenance, renderMaintenances } from "../../services/render/maintenance.js";
 import type { Maintenance } from "../../types.js";
-import { defineTool } from "../define.js";
+import { defineTool, type RequestPlan } from "../define.js";
 import { executeWrite } from "../execute-write.js";
 import { defineResourceFamily, type ResourceConfig } from "../family.js";
 import { teamIdField } from "../teams/shapes.js";
@@ -199,6 +199,23 @@ Requires delete:ops-config:jira-service-management. That grant belongs to the in
   },
 });
 
+// The team-scoped twin again: one tool, two paths, chosen by whether team_id
+// was supplied — the same narrow collapse rule the resource factory applies.
+const cancelPlanFor = (params: {
+  maintenance_id: string;
+  team_id?: string | undefined;
+}): RequestPlan => {
+  const base =
+    params.team_id === undefined
+      ? "/v1/maintenances"
+      : `/v1/teams/${encodeURIComponent(params.team_id)}/maintenances`;
+  return {
+    method: "POST",
+    path: `${base}/${encodeURIComponent(params.maintenance_id)}/cancel`,
+    shape: "object",
+  };
+};
+
 export const cancelMaintenance = defineTool({
   name: "jsm_cancel_maintenance",
   toolset: "maintenance",
@@ -231,15 +248,13 @@ Alerts suppressed *during* the window are not replayed — cancelling resumes fu
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: cancelPlanFor,
   handler: async (params, client) => {
-    const base =
-      params.team_id === undefined
-        ? "/v1/maintenances"
-        : `/v1/teams/${encodeURIComponent(params.team_id)}/maintenances`;
+    const plan = cancelPlanFor(params);
     return executeWrite<Maintenance>(client, {
       label: "Cancel maintenance",
-      method: "POST",
-      path: `${base}/${encodeURIComponent(params.maintenance_id)}/cancel`,
+      method: plan.method,
+      path: plan.path,
       mode: "sync",
       subject: { key: "maintenance_id", value: params.maintenance_id, noun: "maintenance" },
       render: (item) => renderMaintenance(item),

@@ -3,8 +3,10 @@
  */
 
 import { defineTool } from "../define.js";
-import { alertAction } from "./alert-action.js";
+import { alertAction, alertActionPlan } from "./alert-action.js";
 import { asyncOutputSchema, closeShape } from "./shapes.js";
+
+const planFor = (params: { alert_id: string }) => alertActionPlan(params.alert_id, "close");
 
 export const closeAlert = defineTool({
   name: "jsm_close_alert",
@@ -37,5 +39,6 @@ Don't use when: the alert is still being worked — acknowledge instead.`,
     idempotentHint: true,
     openWorldHint: true,
   },
-  handler: async (params, client) => alertAction(client, "Close", params.alert_id, "close"),
+  plan: planFor,
+  handler: async (params, client) => alertAction(client, "Close", params.alert_id, planFor(params)),
 });

@@ -6,10 +6,32 @@ import { z } from "zod";
 
 import { renderNotes } from "../../services/format.js";
 import type { AlertNote } from "../../types.js";
-import { defineTool } from "../define.js";
-import { executeList } from "../list-executor.js";
+import { defineTool, type RequestPlan } from "../define.js";
+import { executeListFromPlan } from "../list-executor.js";
+import { pageSizeParams } from "../paging.js";
 import { paginationOutputShape } from "../../schemas/common.js";
 import { alertTimelineShape } from "./shapes.js";
+
+const CURSOR_PAGING = { kind: "cursor" } as const;
+
+const planFor = (params: {
+  alert_id: string;
+  order: string;
+  offset?: string | undefined;
+  limit: number;
+}): RequestPlan => ({
+  method: "GET",
+  path: `/v1/alerts/${encodeURIComponent(params.alert_id)}/notes`,
+  // `after` is the cursor parameter these endpoints read; `offset` is not one
+  // of their parameters at all, so paging used to re-serve page one.
+  params: {
+    order: params.order,
+    after: params.offset,
+    ...pageSizeParams(CURSOR_PAGING, params.limit),
+  },
+  shape: "collection",
+  paging: CURSOR_PAGING,
+});
 
 export const listAlertNotes = defineTool({
   name: "jsm_list_alert_notes",
@@ -59,14 +81,10 @@ Note: these endpoints page with opaque cursors, not numeric offsets — pass nex
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: planFor,
   handler: async (params, client) =>
-    executeList<AlertNote>({
+    executeListFromPlan<AlertNote>(planFor(params), {
       client,
-      path: `/v1/alerts/${encodeURIComponent(params.alert_id)}/notes`,
-      // `after` is the cursor parameter these endpoints read; `offset` is not
-      // one of their parameters at all, so paging used to re-serve page one.
-      params: { order: params.order, after: params.offset },
-      paging: { kind: "cursor" },
       key: "notes",
       context: "list alert notes",
       limit: params.limit,

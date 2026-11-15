@@ -15,6 +15,13 @@
  *   profiles  a workflow-shaped bundle of toolsets, because the personas
  *             genuinely differ: an incident responder never touches sync
  *             actions, and someone configuring routing rules is not mid-page.
+ *   modes     a profile that changes HOW its toolsets are reached rather than
+ *             which of them are. `code` is the only one: it registers five
+ *             dispatch tools instead of its toolsets' own ninety-odd, so an
+ *             install pays for four descriptions and can still reach
+ *             everything. It composes — JSM_TOOLSETS=code,alert-actions is the
+ *             dispatchers AND the eighteen classic alert tools, which is how an
+ *             install keeps per-tool approvals for the writes it cares about.
  *
  * Only implemented toolsets are listed. A family that has not shipped yet is
  * not a name you can type — an empty toolset would answer "enabled, 0 tools"
@@ -194,7 +201,27 @@ export const PROFILES = {
   // — so that asking for everything cannot quietly hand someone tools that have
   // never been seen to work.
   all: { toolsets: VERIFIED_TOOLSETS },
-} as const satisfies Record<string, { toolsets: readonly ToolsetName[]; only?: readonly string[] }>;
+  /**
+   * Code mode: the dispatch tools, over every verified family.
+   *
+   * `codeOnly` says these toolsets are reached through the dispatch tools
+   * rather than registered as tools of their own. Measured by
+   * scripts/measure-context.mjs, that is a tools/list of 27,744 characters
+   * instead of 74,494 for the `responder` default — while reaching 81
+   * operations rather than 27, because an operation nobody calls costs nothing.
+   *
+   * It applies to THIS name's toolsets only, exactly as `core`'s `only` does
+   * and for the same reason resolveSelection spells out below: a restriction
+   * that leaked across names turned `core,schedules` into every tool in both
+   * families. So JSM_TOOLSETS=code,alert-actions registers the dispatchers over
+   * everything AND the eighteen classic alert-action tools, each keeping its own
+   * name and its own client approval.
+   */
+  code: { toolsets: VERIFIED_TOOLSETS, codeOnly: true },
+} as const satisfies Record<
+  string,
+  { toolsets: readonly ToolsetName[]; only?: readonly string[]; codeOnly?: true }
+>;
 
 /**
  * What an unconfigured install registers.
@@ -225,10 +252,21 @@ export class ToolsetSelectionError extends Error {}
 export interface Selection {
   /** The tools to register, in catalogue order. */
   tools: AnyToolDefinition[];
-  /** Names the user asked for, verbatim, or ["core"] when they asked for nothing. */
+  /** Names the user asked for, verbatim, or [DEFAULT_PROFILE] when they asked for nothing. */
   requested: string[];
-  /** Toolsets those names expanded to. */
+  /** Toolsets those names expanded to, however they are reached. */
   toolsets: ToolsetName[];
+  /**
+   * Toolsets reachable through the code-mode dispatchers. Empty when code mode
+   * is off.
+   *
+   * Distinct from `toolsets` because the two answer different questions: this
+   * one says what a script may call, and `toolsets` says what the user asked
+   * for. A family can be in both — named by `code` and by its own name — and
+   * then it is reachable twice, which is the composition that keeps per-tool
+   * approvals available.
+   */
+  codeToolsets: ToolsetName[];
   readOnly: boolean;
 }
 
@@ -323,12 +361,24 @@ export function resolveSelection(
   // including the deletes core exists to exclude. Names still combine freely,
   // which the README promises: they are unioned, each under its own rule.
   const open = new Set<ToolsetName>();
+  const viaCode = new Set<ToolsetName>();
   const restrictions: Array<{ toolsets: ReadonlySet<ToolsetName>; only: ReadonlySet<string> }> = [];
 
   for (const name of effective) {
     if (isProfile(name)) {
       const profile = PROFILES[name];
       for (const toolset of profile.toolsets) toolsets.add(toolset);
+
+      // A mode's toolsets become reachable by script rather than registered as
+      // tools. Deliberately not added to `open`: that is what makes code mode a
+      // replacement for its families' tool list rather than an addition to it,
+      // and it is why naming a family alongside `code` brings its classic tools
+      // back without any special case here.
+      if ("codeOnly" in profile && profile.codeOnly) {
+        for (const toolset of profile.toolsets) viaCode.add(toolset);
+        continue;
+      }
+
       const only = "only" in profile ? profile.only : undefined;
       if (only) {
         restrictions.push({ toolsets: new Set(profile.toolsets), only: new Set(only) });
@@ -370,7 +420,11 @@ export function resolveSelection(
     tools = tools.filter((tool) => tool.annotations.readOnlyHint);
   }
 
-  if (!tools.length) {
+  // Code mode registers its own dispatch tools, which buildServer adds outside the
+  // selection — so `code` on its own is a perfectly good selection with an
+  // empty `tools`, and only a selection that registers nothing either way is an
+  // error worth stopping for.
+  if (!tools.length && !viaCode.size) {
     throw new ToolsetSelectionError(
       `That selection registers no tools: ${effective.join(", ")}` +
         (readOnly ? " with read-only mode on" : "") +
@@ -382,6 +436,7 @@ export function resolveSelection(
     tools,
     requested: effective,
     toolsets: TOOLSETS.filter((name) => toolsets.has(name)),
+    codeToolsets: TOOLSETS.filter((name) => viaCode.has(name)),
     readOnly,
   };
 }

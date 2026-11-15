@@ -13,11 +13,18 @@
 
 import type { JsmClient } from "../../services/client.js";
 import type { ToolResult } from "../../services/format.js";
+import type { RequestPlan } from "../define.js";
 import { executeWrite } from "../execute-write.js";
 
-export function alertAction(
-  client: JsmClient,
-  label: string,
+/**
+ * The request an alert action issues, as data.
+ *
+ * Split out of `alertAction` so a tool states its action name and body exactly
+ * once: the same value feeds the tool's `plan` for the code API and the handler
+ * that executes it. Two statements of the same request is what the parity sweep
+ * exists to catch, and not making them is cheaper than catching them.
+ */
+export function alertActionPlan(
   alertId: string,
   action: string,
   // Defaulted, because acknowledge, unacknowledge and close declare no request
@@ -26,12 +33,28 @@ export function alertAction(
   // JSON.stringify drops those — so this changes the payload for nobody.
   body: Record<string, unknown> = {},
   method: "POST" | "PATCH" | "DELETE" = "POST",
-): Promise<ToolResult> {
-  return executeWrite(client, {
-    label,
+): RequestPlan {
+  return {
     method,
     path: `/v1/alerts/${encodeURIComponent(alertId)}/${action}`,
     body,
+    // An async action answers with a receipt object, {result, requestId} — not
+    // a collection, and not an empty 204.
+    shape: "object",
+  };
+}
+
+export function alertAction(
+  client: JsmClient,
+  label: string,
+  alertId: string,
+  plan: RequestPlan,
+): Promise<ToolResult> {
+  return executeWrite(client, {
+    label,
+    method: plan.method,
+    path: plan.path,
+    body: plan.body,
     mode: "async",
     subject: { key: "alert_id", value: alertId, noun: "alert" },
   });

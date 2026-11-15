@@ -68,6 +68,31 @@ Error handling:
     idempotentHint: true,
     openWorldHint: true,
   },
+  /** The raw shifts, for the code API. See the note in get-on-call.ts. */
+  fetch: async (params, client) => {
+    const schedule = await resolveScheduleId(
+      client,
+      params.schedule_id,
+      params.schedule_identifier_type,
+    );
+    const instant = params.date ? new Date(params.date) : new Date();
+    const shifts = toShifts(await fetchTimeline(client, schedule.id, instant));
+    // One batched lookup for every responder in the window, rather than one per
+    // period — the same rotation repeats the same handful of people.
+    const directory = await resolveIdentities(client, respondersOf(shifts));
+
+    return {
+      schedule: { id: schedule.id, name: schedule.name ?? null },
+      shifts: shifts.map((shift) => ({
+        ...shift,
+        responders: shift.responders.map((responder) => ({
+          id: responder.id ?? "",
+          ...(responder.type ? { type: responder.type } : {}),
+          ...directory.names.get(responder.id ?? ""),
+        })),
+      })),
+    };
+  },
   handler: async (params, client) => {
     try {
       const schedule = await resolveScheduleId(

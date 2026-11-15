@@ -9,10 +9,17 @@
 
 import { fail } from "../../services/format.js";
 import { defineTool } from "../define.js";
-import { alertAction } from "./alert-action.js";
+import { alertAction, alertActionPlan } from "./alert-action.js";
 import { asyncOutputSchema, updateFieldShape } from "./shapes.js";
 
 const PRIORITIES = new Set(["P1", "P2", "P3", "P4", "P5"]);
+
+// No user/source in the body. Unlike acknowledge and close — where the spec
+// declares no request body at all and the actor fields ride on Opsgenie
+// parity — these three endpoints enumerate exactly one property each, so
+// sending more would advertise an actor override they do not implement.
+const planFor = (params: { alert_id: string; field: string; value: string }) =>
+  alertActionPlan(params.alert_id, params.field, { [params.field]: params.value }, "PATCH");
 
 export const updateAlertField = defineTool({
   name: "jsm_update_alert_field",
@@ -58,6 +65,7 @@ Constraints and errors:
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: planFor,
   handler: async (params, client) => {
     if (params.field === "priority" && !PRIORITIES.has(params.value)) {
       // Caught here rather than in the schema because `value`'s type depends on
@@ -68,17 +76,6 @@ Constraints and errors:
       );
     }
 
-    // No user/source in the body. Unlike acknowledge and close — where the spec
-    // declares no request body at all and the actor fields ride on Opsgenie
-    // parity — these three endpoints enumerate exactly one property each, so
-    // sending more would advertise an actor override they do not implement.
-    return alertAction(
-      client,
-      `Update ${params.field}`,
-      params.alert_id,
-      params.field,
-      { [params.field]: params.value },
-      "PATCH",
-    );
+    return alertAction(client, `Update ${params.field}`, params.alert_id, planFor(params));
   },
 });

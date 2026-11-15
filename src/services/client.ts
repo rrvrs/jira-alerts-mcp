@@ -25,6 +25,14 @@ export interface JsmConfig {
 /** Thrown for auth/config problems detected before any network call. */
 export class JsmConfigError extends Error {}
 
+/** What `request` accepts. Extracted so the signal is documented in one place. */
+export interface RequestOptions {
+  params?: Record<string, unknown> | undefined;
+  body?: unknown;
+  /** Aborts the request. See the note on `request`. */
+  signal?: AbortSignal | undefined;
+}
+
 /**
  * Reads configuration from the environment and fails loudly if the server
  * cannot possibly authenticate. Called once at startup so misconfiguration
@@ -82,17 +90,26 @@ export class JsmClient {
   /**
    * Issues a request and returns the raw response body.
    * Query params with `undefined` values are dropped by axios automatically.
+   *
+   * `signal` is how a caller with a shorter deadline than REQUEST_TIMEOUT_MS
+   * imposes it. Code mode needs this: an invocation gets ten seconds and this
+   * client waits thirty, so without the signal one slow request would keep
+   * running for twenty seconds after the call that wanted it had already
+   * failed its deadline. Optional, so every existing call site is unchanged.
    */
   async request<T>(
     method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
-    options: { params?: Record<string, unknown> | undefined; body?: unknown } = {},
+    options: RequestOptions = {},
   ): Promise<T> {
     const response = await this.http.request<T>({
       method,
       url: path,
       params: options.params,
       data: options.body,
+      // Spread rather than assigned: under exactOptionalPropertyTypes an
+      // explicit `signal: undefined` does not satisfy axios's optional field.
+      ...(options.signal ? { signal: options.signal } : {}),
     });
     return response.data;
   }
@@ -107,10 +124,11 @@ export class JsmClient {
   async getCollection<T>(
     path: string,
     params?: Record<string, unknown>,
-    options: { itemsKey?: string | undefined } = {},
+    options: { itemsKey?: string | undefined; signal?: AbortSignal | undefined } = {},
   ): Promise<Paged<T>> {
     const raw = await this.request<unknown>("GET", path, {
       params,
+      ...(options.signal ? { signal: options.signal } : {}),
     });
 
     // Two envelopes escape the `data`/`values` convention entirely, and both
@@ -144,15 +162,29 @@ export class JsmClient {
    * Deliberately does no envelope unwrapping: the Jira API has its own
    * conventions and callers here want the body as-is.
    */
-  async jiraGet<T>(path: string, params?: Record<string, unknown>): Promise<T> {
-    const response = await this.jira.request<T>({ method: "GET", url: path, params });
+  async jiraGet<T>(
+    path: string,
+    params?: Record<string, unknown>,
+    options: { signal?: AbortSignal | undefined } = {},
+  ): Promise<T> {
+    const response = await this.jira.request<T>({
+      method: "GET",
+      url: path,
+      params,
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
     return response.data;
   }
 
   /** GET for endpoints returning a single object under `data`/`values`. */
-  async getOne<T>(path: string, params?: Record<string, unknown>): Promise<T> {
+  async getOne<T>(
+    path: string,
+    params?: Record<string, unknown>,
+    options: { signal?: AbortSignal | undefined } = {},
+  ): Promise<T> {
     const raw = await this.request<unknown>("GET", path, {
       params,
+      ...(options.signal ? { signal: options.signal } : {}),
     });
     return unwrapEnvelope<T>(raw);
   }

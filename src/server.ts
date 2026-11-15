@@ -14,6 +14,7 @@ import type { JsmClient } from "./services/client.js";
 import { withModernDialect } from "./services/schema-dialect.js";
 import type { Selection } from "./toolsets.js";
 import { createCapabilitiesTool } from "./tools/capabilities.js";
+import { createCodeMode } from "./tools/code/index.js";
 import type { AnyToolDefinition } from "./tools/define.js";
 import { registerTools } from "./tools/define.js";
 import { alertReadTools } from "./tools/alerts/index.js";
@@ -44,6 +45,43 @@ export const allTools: AnyToolDefinition[] = [
 ];
 
 /**
+ * Every tool this process registers: the selection, code mode's dispatchers
+ * when it is on, and jsm_list_capabilities either way.
+ *
+ * The last two are built here rather than resolved into the selection because
+ * their descriptions report what THIS install can reach — the capabilities
+ * tool explains a family that is off, and jsm_call embeds the list of
+ * operations it can dispatch. A static description would be wrong on every
+ * install but one.
+ *
+ * Exported so the wire snapshot and the TOOLS.md coverage test can read the
+ * composed list rather than `allTools`, which does not contain either.
+ */
+export function composeTools(client: JsmClient, selection: Selection): AnyToolDefinition[] {
+  const codeMode = selection.codeToolsets.length
+    ? createCodeMode({
+        catalogue: allTools,
+        // Built from the selection, never from allTools: a dispatcher that
+        // reached past what the operator enabled would make the toolset promise
+        // meaningless.
+        reachable: new Set(
+          allTools
+            .filter((tool) => (selection.codeToolsets as readonly string[]).includes(tool.toolset))
+            .map((tool) => tool.name),
+        ),
+        client,
+        readOnly: selection.readOnly,
+      })
+    : undefined;
+
+  const registered = [...selection.tools, ...(codeMode?.tools ?? [])];
+  return [
+    ...registered,
+    createCapabilitiesTool(allTools, selection, registered, codeMode?.sandbox),
+  ];
+}
+
+/**
  * Builds a server exposing exactly `selection`, plus jsm_list_capabilities.
  *
  * The capabilities tool is added here rather than in the selection because it
@@ -52,7 +90,7 @@ export const allTools: AnyToolDefinition[] = [
  */
 export function buildServer(client: JsmClient, selection: Selection): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
-  registerTools(server, client, [...selection.tools, createCapabilitiesTool(allTools, selection)]);
+  registerTools(server, client, composeTools(client, selection));
 
   // Every transport this server is handed gets the dialect correction, so no
   // future call site can forget it — see services/schema-dialect.ts for why the

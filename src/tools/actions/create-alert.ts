@@ -7,9 +7,29 @@
  * and needs only the write scope the other write tools already require.
  */
 
-import { defineTool } from "../define.js";
+import { defineTool, type RequestPlan } from "../define.js";
 import { executeWrite } from "../execute-write.js";
 import { createAlertShape, createOutputSchema } from "./shapes.js";
+
+const planFor = (params: Record<string, unknown>): RequestPlan => ({
+  method: "POST",
+  path: "/v1/alerts",
+  body: {
+    message: params.message,
+    alias: params.alias,
+    description: params.description,
+    priority: params.priority,
+    responders: params.responders,
+    visibleTo: params.visible_to,
+    entity: params.entity,
+    tags: params.tags,
+    actions: params.actions,
+    extraProperties: params.extra_properties,
+    note: params.note,
+    source: params.source,
+  },
+  shape: "object",
+});
 
 export const createAlert = defineTool({
   name: "jsm_create_alert",
@@ -78,26 +98,16 @@ Constraints and errors:
     idempotentHint: false,
     openWorldHint: true,
   },
-  handler: async (params, client) =>
-    executeWrite(client, {
+  plan: planFor,
+  handler: async (params, client) => {
+    const plan = planFor(params);
+    return executeWrite(client, {
       label: "Create alert",
-      method: "POST",
-      path: "/v1/alerts",
+      method: plan.method,
+      path: plan.path,
       mode: "async",
       subject: { key: "alias", value: params.alias, noun: "alert" },
-      body: {
-        message: params.message,
-        alias: params.alias,
-        description: params.description,
-        priority: params.priority,
-        responders: params.responders,
-        visibleTo: params.visible_to,
-        entity: params.entity,
-        tags: params.tags,
-        actions: params.actions,
-        extraProperties: params.extra_properties,
-        note: params.note,
-        source: params.source,
-      },
-    }),
+      body: plan.body,
+    });
+  },
 });

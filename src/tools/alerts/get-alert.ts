@@ -6,8 +6,24 @@ import { type JsmClient, handleApiError } from "../../services/client.js";
 import { resolveIdentities } from "../../services/directory.js";
 import { fail, renderAlertDetail, renderFormat } from "../../services/format.js";
 import type { Alert } from "../../types.js";
-import { defineTool } from "../define.js";
+import { defineTool, type RequestPlan } from "../define.js";
 import { alertOutputShape, getAlertShape } from "./shapes.js";
+
+// Aliases are a different endpoint entirely, not a different id format, which
+// is why this branches on the identifier type rather than on the value.
+const planFor = (params: { identifier: string; identifier_type: string }): RequestPlan =>
+  params.identifier_type === "alias"
+    ? {
+        method: "GET",
+        path: "/v1/alerts/alias",
+        params: { alias: params.identifier },
+        shape: "object",
+      }
+    : {
+        method: "GET",
+        path: `/v1/alerts/${encodeURIComponent(params.identifier)}`,
+        shape: "object",
+      };
 
 export const getAlert = defineTool({
   name: "jsm_get_alert",
@@ -43,13 +59,11 @@ Error handling:
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: planFor,
   handler: async (params, client: JsmClient) => {
+    const plan = planFor(params);
     try {
-      // Aliases are a different endpoint entirely, not a different id format.
-      const alert =
-        params.identifier_type === "alias"
-          ? await client.getOne<Alert>("/v1/alerts/alias", { alias: params.identifier })
-          : await client.getOne<Alert>(`/v1/alerts/${encodeURIComponent(params.identifier)}`);
+      const alert = await client.getOne<Alert>(plan.path, plan.params);
 
       if (!alert?.id) {
         return fail(

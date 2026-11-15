@@ -205,6 +205,56 @@ on-call reads plus schedule and team configuration. They are separate from
 responder working an incident should be one tool call away from, and the write
 scopes are a different grant.
 
+## Code mode
+
+`JSM_TOOLSETS=code` registers these five instead of the tools above, and reaches
+every verified family on this page through them. Measured with
+`npm run measure:context`, that is a `tools/list` of **27,744 characters instead
+of 74,494** for the `responder` default — a 63% cut, while reaching **81
+operations rather than 27**, because an operation nobody calls costs nothing.
+Against every toolset named explicitly (210,148 characters) the cut is 87%.
+
+The three families that [could not be verified](README.md#what-has-and-has-not-been-verified)
+are not among the 81: `code` expands to the verified toolsets only, exactly as
+`all` does. Naming one alongside — `JSM_TOOLSETS=code,heartbeats` — registers it
+as classic tools, which is also how you keep per-tool approvals for a family.
+
+| Tool | What it does | Read/Write |
+|---|---|---|
+| `jsm_search_api` | Search the whole catalogue by keyword, at three levels of detail | read |
+| `jsm_read_api` | Full TypeScript argument types and documentation for named operations | read |
+| `jsm_call` | Call one read operation and get its data back, unrendered | read |
+| `jsm_run` | Run a read-only script against the API and get back only what it logs | read |
+| `jsm_apply` | Call one write operation, so your client approves it by name | **destructive** |
+
+`jsm_run` is the one that takes the *data* out of your context as well as the
+tool definitions. A script sweeps two thousand alerts, counts the ones that
+matter, and logs a sentence; the two thousand never reach the model. It runs in
+an empty JavaScript realm inside a child `node --permission` process with an
+empty environment — no filesystem, no network, no ability to start anything, and
+no credential to find. It can only read: every operation it can call issues a
+GET. **It needs Node 25 or later** and is not registered below that, because
+Node's permission model does not deny network access before v25; the other four
+work on Node 24.
+
+The operation name is an argument, so `jsm_call` with `operation="listAlerts"` is
+the same request `jsm_list_alerts` makes. Names are mechanical: drop the `jsm_`
+prefix and camelCase the rest. Both spellings are accepted everywhere.
+
+**Writes are not batched and `jsm_call` cannot make them.** Thirty-seven of these
+operations are destructive, and a single dispatcher that could reach all of them
+would carry one annotation and therefore one client approval — granted once, for
+a tool whose description says "writes things". So `jsm_call` is honestly
+read-only and auto-approvable, `jsm_apply` takes one operation per call with its
+name in the arguments where the approval dialog shows it, and a destructive
+operation additionally needs the operator to have set `JSM_CODE_DESTRUCTIVE`.
+
+To keep per-tool approvals for a family you care about, name it alongside:
+`JSM_TOOLSETS=code,alert-actions` registers the dispatchers *and* the eighteen
+classic alert-action tools, each with its own name and its own prompt.
+
+`jsm_list_capabilities` is registered in both modes and says which one is on.
+
 ## Reading these tables
 
 `jsm_deactivate_contact` and `jsm_change_routing_rule_order` are marked

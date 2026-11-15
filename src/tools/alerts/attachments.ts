@@ -16,9 +16,32 @@ import {
   ResponseFormat,
 } from "../../schemas/common.js";
 import type { AlertAttachment } from "../../types.js";
-import { defineTool } from "../define.js";
-import { executeList } from "../list-executor.js";
+import { defineTool, type RequestPlan } from "../define.js";
+import { executeListFromPlan } from "../list-executor.js";
+import { pageSizeParams } from "../paging.js";
 import { paginationOutputShape } from "../../schemas/common.js";
+
+const CURSOR_PAGING = { kind: "cursor" } as const;
+
+const listPlanFor = (params: {
+  alert_id: string;
+  cursor?: string | undefined;
+  limit: number;
+}): RequestPlan => ({
+  method: "GET",
+  path: `/v1/alerts/${encodeURIComponent(params.alert_id)}/attachments`,
+  params: { after: params.cursor, ...pageSizeParams(CURSOR_PAGING, params.limit) },
+  shape: "collection",
+  paging: CURSOR_PAGING,
+});
+
+const getPlanFor = (params: { alert_id: string; attachment_id: string }): RequestPlan => ({
+  method: "GET",
+  path: `/v1/alerts/${encodeURIComponent(params.alert_id)}/attachments/${encodeURIComponent(
+    params.attachment_id,
+  )}`,
+  shape: "object",
+});
 
 export const listAlertAttachments = defineTool({
   name: "jsm_list_alert_attachments",
@@ -69,12 +92,10 @@ Note the id is a timestamp rendered as a string, so it is not meaningfully order
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: listPlanFor,
   handler: async (params, client) =>
-    executeList<AlertAttachment>({
+    executeListFromPlan<AlertAttachment>(listPlanFor(params), {
       client,
-      path: `/v1/alerts/${encodeURIComponent(params.alert_id)}/attachments`,
-      params: { after: params.cursor },
-      paging: { kind: "cursor" },
       key: "attachments",
       context: "list alert attachments",
       limit: params.limit,
@@ -120,13 +141,10 @@ Constraints and errors:
     idempotentHint: true,
     openWorldHint: true,
   },
+  plan: getPlanFor,
   handler: async (params, client) => {
     try {
-      const response = await client.getOne<{ url?: string }>(
-        `/v1/alerts/${encodeURIComponent(params.alert_id)}/attachments/${encodeURIComponent(
-          params.attachment_id,
-        )}`,
-      );
+      const response = await client.getOne<{ url?: string }>(getPlanFor(params).path);
 
       const structured = {
         alert_id: params.alert_id,

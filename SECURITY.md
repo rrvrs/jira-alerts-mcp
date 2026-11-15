@@ -22,6 +22,152 @@ With `read:ops-alert:jira-service-management` **and** `write:ops-alert:jira-serv
 
 Schedules and on-call are a third, separate grant: `read:ops-config:jira-service-management`. It reads operations *configuration*, so it is broader than the on-call lookups this server makes.
 
+## Code mode and the approval surface
+
+`JSM_TOOLSETS=code` registers five dispatch tools instead of ninety-odd and
+reaches every verified family through them. It does **not** widen what your
+credential can do — the dispatchers are built from the selection, never from the
+whole catalogue, so they reach exactly the families the operator enabled. What
+it changes is **what one approval covers**, and that is worth understanding
+before you deploy it.
+
+Thirty-seven of these operations are destructive: every update and every delete.
+As individual tools each prompts on its own, with its own name in the client's
+dialog. A single write-capable dispatcher would carry one annotation and
+therefore one approval, granted once, for a tool whose description says "writes
+things". Four things keep that from being a regression:
+
+- **`jsm_call` cannot write.** Every operation reachable through it issues a
+  `GET`, enforced in the dispatcher rather than documented as a convention, so
+  the tool is honestly read-only and safe to auto-approve.
+- **`jsm_apply` takes one operation per call**, as an argument, so the operation
+  is named in what the client shows before the user consents. It is annotated
+  destructive, so nothing auto-approves it.
+- **Destructive operations need `JSM_CODE_DESTRUCTIVE=true`**, an operator
+  setting, default off. Deliberately not an annotation and not a model
+  argument: some clients auto-approve by tool name and some read no annotations
+  at all, so the only place this can be enforced independently of client
+  behaviour is in this process.
+- **`JSM_READ_ONLY=true` removes `jsm_apply`**, as it removes every other write
+  tool. The read dispatchers survive, which is the right split.
+
+If you auto-approve anything, `JSM_TOOLSETS=code,alert-actions` is the shape to
+prefer: the dispatchers plus the eighteen classic alert tools, each keeping its
+own name and its own prompt.
+
+**Alert content is still untrusted input.** Alert messages, descriptions and
+notes are written by whatever integration fired them, and they reach the model's
+context. A model acting on instructions found there can call a dispatcher, just
+as it could call a tool — which is why `jsm_call` is restricted to reads and why
+writes are approved one at a time. Narrowing `JSM_TOOLSETS` narrows what a
+dispatcher can reach at all.
+
+### The script sandbox
+
+`jsm_run` executes JavaScript the model wrote, behind two layers that do
+different jobs. Neither is relied on alone.
+
+**Layer one: an empty realm.** The script runs in a `vm` context whose only
+globals are `jsm` and `console`. Nothing is taken away from it, because nothing
+was there:
+
+| Route out | Result |
+|---|---|
+| `process`, `require`, `module`, `fetch`, timers, `Buffer` | `undefined` — absent from the realm |
+| `import("node:process")` | throws — the script is compiled with no dynamic-import callback |
+| `eval`, `Function("…")`, `AsyncFunction("…")` | `EvalError` — code generation from strings is off in the realm |
+| `jsm.listAlerts.constructor("return process")()` | `EvalError` — and off in the harness's realm too, via `--disallow-code-generation-from-strings` |
+
+That last row is the classic escape from a `vm` context, and the flag exists to
+close it. Values handed to a script are parsed inside its realm, so the only
+objects it ever holds from outside are the functions it calls.
+
+This layer matters because of one thing the next layer does not cover:
+`process.kill` is not gated by Node's permission model. An earlier version of
+this harness ran scripts in its own global scope and removed dangerous globals
+afterwards; a review found that `import("node:process")` and
+`globalThis.require` both still reached the real `process`, from which a script
+could signal this server or any other process its user owns. Each row above is
+a test.
+
+**Layer two: a process that can do nothing.** The realm lives in a child
+`node --permission` process spawned with an empty environment:
+
+| Capability | Result |
+|---|---|
+| Filesystem | `ERR_ACCESS_DENIED` |
+| TCP, UDP, DNS, HTTPS | `ERR_ACCESS_DENIED` |
+| Subprocesses, worker threads | `ERR_ACCESS_DENIED` |
+| Environment | empty |
+
+Before the first script runs, the server starts a child exactly as a script's
+child is started and has it try to read a file, spawn a process, open a socket
+and resolve a name. Every attempt must be denied or `jsm_run` refuses to run
+anything. A version check trusts a changelog; this trusts the runtime.
+
+**`jsm_run` requires Node 25 or later, and is not registered below it.** Node's
+permission model denies network access only from v25.0.0. On Node 24 — which
+this package otherwise supports — `--permission` restricts files and
+subprocesses and leaves sockets open, so a script could send out whatever it had
+read. `jsm_list_capabilities` reports the reason. This was found in review, not
+in testing: the sandbox had been verified on Node 26 only, and no test attempted
+a connection.
+
+The Atlassian credential is not hidden from the script, it is **not there** —
+it lives in this process's environment and the child is given none of it. Every
+API call a script makes is a newline-framed message to this process, which holds
+the credential and issues the request. The script is written to the child's stdin
+rather than passed in argv, because argv is readable by anything that can list
+processes and a script may legitimately carry alert text or an account id. Each
+script gets its own process, killed when it finishes, so nothing carries between
+runs and there is nowhere to persist to.
+
+**A script can only read.** Every operation reachable from inside the sandbox has
+`readOnlyHint` and issues a `GET`, enforced by the dispatcher — the context a
+script runs under carries no write allowlist, so a write is refused before a
+request is made. This is the mitigation that matters for prompt injection: alert
+messages, descriptions and notes are written by whatever integration fired them
+and they reach the model's context, so a model acting on instructions found there
+can write a script. A script that cannot write cannot be made to delete a
+schedule. The residual exposure is *reading* more than you intended, and
+narrowing `JSM_TOOLSETS` narrows what a script can reach at all.
+
+**Bounded.** Wall clock, HTTP requests, records, pages, outbound concurrency,
+heap (64MB via `--max-old-space-size`), script length, log lines, bytes written
+back, and the number of sandbox processes running at once — all capped, all
+enforced in this process, with hard limits configuration cannot raise. A runaway
+script is SIGKILLed; measured, that takes about 200ms.
+
+**The caveats, stated plainly.** Node documents `vm` as not being a security
+mechanism, and the permission model's network gating is recent — added in v25
+and still marked as under active development. That is why there are two layers
+and a self-test rather than one mechanism trusted on its word. The plan for this
+work preferred QuickJS compiled to WebAssembly, which has no filesystem or
+network to deny, and its spike failed: a module's top-level `await` left a
+pending job that only a synchronous `executePendingJobs` could drive, so every
+statement after the first `await` on a host function was dropped, and disposing
+the runtime aborted the WASM module with a GC assertion. The write-up is in
+`src/tools/code/engine.ts`. The engine sits behind one interface; replacing it
+touches two files.
+
+Note also that this server now imports `node:child_process`, which it previously
+did not — see the note under *Security alerts on the npm page*. It spawns only
+its own Node binary, with a fixed argument list and no shell.
+
+**Every invocation is audited.** Code mode writes one structured line per call
+to stderr: the operations called, the request and record counts, the duration,
+and any writes that completed. A dispatched write does not carry its operation
+in the tool name, so without this the client transcript stops answering "what
+did this server do with my credential". Arguments and response bodies are not
+logged at `info` — alert content may contain anything, and a log file is a place
+people forget to treat as sensitive. `JSM_LOG_LEVEL=debug` widens it knowingly.
+
+**Budgets are enforced here, not by the client.** A classic tool call is one HTTP
+request. A dispatched call can page, so the server caps requests, records, pages,
+outbound concurrency and wall-clock time per call, with hard limits that
+configuration cannot raise. A value outside the permitted range stops the server
+at startup rather than being silently clamped.
+
 ## Hardening notes
 
 - **Give it its own account.** Prefer a dedicated service account with the minimum Operations access needed, over a human's personal token.
@@ -44,7 +190,7 @@ Schedules and on-call are a third, separate grant: `read:ops-config:jira-service
 The package page on npmjs.com renders a supply-chain analysis from Socket. It scans the whole installed dependency tree, not just the files this package publishes, and attributes what it finds to the page of every dependent. Four alerts currently show there. All four come from dependencies; none describe code in this package. They are worth understanding rather than dismissing, so:
 
 - **"Dynamic code execution (eval)"** — this is [`ajv`](https://www.npmjs.com/package/ajv), reached through `@modelcontextprotocol/sdk`. A JSON Schema validator turns schemas into validator functions with `new Function`; that is how the library works, and it is what validates MCP messages. There is no `eval`, `new Function` or `vm` usage anywhere in `src/`.
-- **"Accesses the system shell"** — this is [`cross-spawn`](https://www.npmjs.com/package/cross-spawn), also via the SDK, which needs `child_process` because the SDK ships a stdio *client* transport that launches MCP servers as subprocesses. This package is a server and never calls it. Nothing in `src/` imports `child_process`.
+- **"Accesses the system shell"** — two things now sit behind this one alert, and they deserve separating. [`cross-spawn`](https://www.npmjs.com/package/cross-spawn), via the SDK, needs `child_process` because the SDK ships a stdio *client* transport that launches MCP servers as subprocesses; this package is a server and never calls it. **And `src/tools/code/child-engine.ts` imports `node:child_process` deliberately**, to run `jsm_run`'s sandbox. That used to be something this file could say nothing in `src/` did, and it is no longer true, so: it spawns `process.execPath` — this server's own Node binary — with a fixed argument list, `shell: false` (the default), and an environment containing one variable. It never interpolates user or model input into a command, and the only thing it ever runs is Node with the harness in `src/tools/code/runner.ts`. The spawn is the mechanism by which model-written code is kept *away* from this process, not a way for it to reach out.
 - **A finding describing a shopping cart, unescaped HTML and `origin: '*'` CORS** — this is the SDK's `dist/examples/server/elicitationUrlExample.js`, a demo that ships inside its tarball because the SDK's `files` is `["dist"]` and `dist/examples/` sits within it. Nothing in `src/` imports from `examples/`, so it is dead code in your install. This server has no cart, no sessions, no elicitation, and emits no HTML at all — every response is JSON.
 - **"Can be replaced with a Socket optimized override"** — a vendor suggestion, not a finding about this package.
 
