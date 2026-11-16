@@ -386,7 +386,10 @@ export function createDispatcher(
       let requests = 0;
       let stoppedBecause: string | undefined;
 
-      while (!stoppedBecause) {
+      // Every exit is an explicit `break` below, each beside the reason for it.
+      // The loop used to test `!stoppedBecause`, which was always true when it
+      // was evaluated and read as a guard that was doing nothing.
+      while (true) {
         if (requests >= ctx.limits.maxPages) {
           stoppedBecause = `stopped at the ${ctx.limits.maxPages}-page limit`;
           break;
