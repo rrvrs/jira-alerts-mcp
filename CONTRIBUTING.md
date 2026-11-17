@@ -29,6 +29,7 @@ Then:
 | `npm run build` | Compiles to `dist/` |
 | `npm run check:endpoints` | Every tool's declared endpoint, checked against the vendored OpenAPI spec |
 | `npm run spec:refresh` | Re-downloads that spec and rewrites its recorded hash |
+| `npm run build:logo` | Redraws `docs/logo.png` and `docs/logo.svg` from the ASCII art in the script |
 | `npm run inspect` | MCP Inspector against `dist/index.js` — needs credentials |
 
 CI runs lint, typecheck, test, and build on Node 24 and 26, plus CodeQL. All of them must pass — the `main` ruleset gates merges on them.

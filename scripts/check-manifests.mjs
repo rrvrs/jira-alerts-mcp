@@ -55,6 +55,55 @@ expect(
   `server.json description is ${server.description?.length} characters; the schema allows 100`,
 );
 
+// --- The icons server.json advertises --------------------------------------
+//
+// The registry and the README both load the icons over raw.githubusercontent,
+// so the manifest is making two claims about files nothing else re-reads: that
+// they are in this repository, and that the PNG is 512x512. scripts/make-logo.mjs
+// could be run at another size, or an icon could be left pointing at a fork
+// after one, and the only symptom would be a listing with a broken or
+// mis-scaled logo — which nobody sees until it is already published.
+
+const rawPrefix = `${(server.repository?.url ?? "").replace(
+  "https://github.com/",
+  "https://raw.githubusercontent.com/",
+)}/main/`;
+
+/** `[width, height]` from a PNG's IHDR, or null if it is not a PNG at all. */
+const pngSize = (bytes) =>
+  bytes.subarray(0, 8).toString("latin1") === "\x89PNG\r\n\x1a\n"
+    ? [bytes.readUInt32BE(16), bytes.readUInt32BE(20)]
+    : null;
+
+for (const icon of server.icons ?? []) {
+  if (!icon.src?.startsWith(rawPrefix)) {
+    failures.push(`server.json icon ${icon.src} does not point at this repository (${rawPrefix})`);
+    continue;
+  }
+
+  const path = icon.src.slice(rawPrefix.length);
+  let bytes;
+  try {
+    bytes = readFileSync(new URL(`../${path}`, import.meta.url));
+  } catch {
+    failures.push(`server.json advertises ${path}, which is not in the repository`);
+    continue;
+  }
+
+  if (icon.mimeType !== "image/png") continue;
+
+  const size = pngSize(bytes);
+  const declared = icon.sizes?.filter((value) => value !== "any") ?? [];
+  expect(size, `${path} is advertised as image/png but is not a PNG`);
+  for (const value of declared) {
+    expect(
+      size && value === `${size[0]}x${size[1]}`,
+      `server.json says ${path} is ${value} but it is ${size?.join("x")} — ` +
+        "run `npm run build:logo`",
+    );
+  }
+}
+
 // --- Ruleset status checks vs the jobs that actually report ----------------
 //
 // The `main` ruleset requires status checks by name. Require a name nothing
