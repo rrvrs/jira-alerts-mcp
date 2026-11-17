@@ -18,10 +18,19 @@
  * advertises to the MCP Registry; check-manifests.mjs asserts the PNG says so
  * too.
  *
+ * The background is transparent, and that is the whole design. The portfolio
+ * draws this bell on a dark glass tile, but there the tile is the page; baked
+ * into the asset it becomes a plate that travels with the mark. A near-black
+ * tile against GitHub's dark README is #1a1e37 on #0d1117 with a lit hairline
+ * down its edge — not a logo, a rectangle someone pasted on. Transparency has
+ * one asset read on both themes, which is what the tile was reaching for.
+ * Nothing in the gradient needs a backdrop: it runs indigo to coral, well clear
+ * of white and of near-black at both ends.
+ *
  * The PNG is assembled here rather than through a dependency because the whole
- * job is axis-aligned rectangles on a rounded tile: spans of constant colour,
- * which is the one case where writing the scanlines directly is shorter than
- * configuring something to do it.
+ * job is axis-aligned rectangles: spans of constant colour, which is the one
+ * case where writing the scanlines directly is shorter than configuring
+ * something to do it.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -69,27 +78,32 @@ const SIZE = 512;
 
 // Cell pitch. A monospace advance is 0.6em against a 1.15 line-height, so the
 // grid is roughly 1 : 1.7 — the proportion that makes the bell read as a bell
-// rather than a squashed one. 7 x 12 is that ratio in whole pixels at 512.
-const CELL_W = 7;
-const CELL_H = 12;
+// rather than a squashed one. With no tile to sit inside, the art is sized to
+// the frame itself: 28 rows of 15.5 fill 85% of it, leaving the margin an icon
+// needs without the mark floating in the middle of a mostly empty square.
+const CELL_W = 9;
+const CELL_H = 15.5;
 
 // Each cell is drawn 1px inside its box and stroked back out with a round join,
-// which is how a 6x9 block gets a 1px corner radius without a path per corner.
+// which is how a block gets a 1px corner radius without a path per corner.
 const STROKE = 2;
 
-/** Where each glyph sits in its cell: [x, y, width, height]. */
-const BLOCK = [0.5, 1.5, 6, 9];
+/**
+ * Where each glyph sits in its cell, as fractions of the cell — so the pitch
+ * above is the only size knob, and changing it rescales the art intact.
+ */
+const BLOCK = [0.071, 0.125, 0.857, 0.75];
 const GLYPHS = {
   8: BLOCK,
   b: BLOCK,
   d: BLOCK,
   p: BLOCK,
   q: BLOCK,
-  P: [0.5, 1.5, 6, 5.5],
-  Y: [0.5, 1.5, 6, 5.5],
-  "|": [2, 1.5, 3, 9],
-  ".": [1.75, 7, 3.5, 3.5],
-  "'": [1.75, 1.5, 3.5, 3.5],
+  P: [0.071, 0.125, 0.857, 0.458],
+  Y: [0.071, 0.125, 0.857, 0.458],
+  "|": [0.286, 0.125, 0.429, 0.75],
+  ".": [0.25, 0.583, 0.5, 0.292],
+  "'": [0.25, 0.125, 0.5, 0.292],
 };
 
 // The card's own gradient, `.asterisk__art` on the portfolio, converted out of
@@ -97,20 +111,12 @@ const GLYPHS = {
 // oklch(64% .13 330) 75% -> oklch(72% .12 10). Hex rather than oklch because an
 // SVG icon is rendered by whatever the registry or a README viewer happens to
 // use, and oklch() in a `stop-color` is not something to bet the mark on.
-const BELL_STOPS = [
+const STOPS = [
   [0, [0x5d, 0x73, 0xea]],
   [0.45, [0x65, 0x72, 0xe4]],
   [0.75, [0xb8, 0x6d, 0xb1]],
   [1, [0xe4, 0x83, 0x93]],
 ];
-
-// The tile is part of the asset, not a backdrop for it: GitHub serves the
-// README on white and the registry on near-black, and a bell with a transparent
-// background would have to work on both. This one carries its own.
-const TILE_TOP = [0x0c, 0x0c, 0x11];
-const TILE_BOTTOM = [0x07, 0x07, 0x09];
-const GLOW = [0x5d, 0x73, 0xea];
-const RADIUS = 118;
 
 const url = (path) => new URL(`../${path}`, import.meta.url);
 
@@ -131,21 +137,28 @@ const cells = lines.flatMap((line, row) =>
     const box = GLYPHS[glyph];
     if (!box) throw new Error(`ART uses ${JSON.stringify(glyph)}, which has no cell shape`);
     const [dx, dy, width, height] = box;
-    return [[originX + column * CELL_W + dx, originY + row * CELL_H + dy, width, height]];
+    return [
+      [
+        originX + (column + dx) * CELL_W,
+        originY + (row + dy) * CELL_H,
+        width * CELL_W,
+        height * CELL_H,
+      ],
+    ];
   }),
 );
 
 /** The gradient colour at a point down the bell, 0 at its top and 1 at its foot. */
 function bellColor(t) {
   const clamped = Math.min(1, Math.max(0, t));
-  for (let i = 1; i < BELL_STOPS.length; i += 1) {
-    const [from, a] = BELL_STOPS[i - 1];
-    const [to, b] = BELL_STOPS[i];
+  for (let i = 1; i < STOPS.length; i += 1) {
+    const [from, a] = STOPS[i - 1];
+    const [to, b] = STOPS[i];
     if (clamped > to) continue;
     const f = to === from ? 0 : (clamped - from) / (to - from);
     return a.map((channel, c) => channel + (b[c] - channel) * f);
   }
-  return BELL_STOPS.at(-1)[1];
+  return STOPS.at(-1)[1];
 }
 
 const hex = (rgb) => `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, "0")).join("")}`;
@@ -162,33 +175,18 @@ function renderSvg() {
     })
     .join("");
 
-  const stops = BELL_STOPS.map(
+  const stops = STOPS.map(
     ([offset, rgb]) => `<stop offset="${offset * 100}%" stop-color="${hex(rgb)}"/>`,
   ).join("");
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SIZE} ${SIZE}" width="${SIZE}" height="${SIZE}" role="img" aria-labelledby="t d">
   <title id="t">Jira Alerts MCP</title>
-  <desc id="d">An alert bell drawn in monospace character cells, lit by an indigo-to-coral gradient on a near-black tile.</desc>
+  <desc id="d">An alert bell drawn in monospace character cells, lit by an indigo-to-coral gradient.</desc>
   <!-- Generated by scripts/make-logo.mjs from the ASCII bell it carries. Edit
        that, not this: the path below is one segment per character. -->
   <defs>
-    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${hex(TILE_TOP)}"/>
-      <stop offset="100%" stop-color="${hex(TILE_BOTTOM)}"/>
-    </linearGradient>
-    <radialGradient id="glow" cx="50%" cy="16%" r="76%">
-      <stop offset="0%" stop-color="${hex(GLOW)}" stop-opacity="0.22"/>
-      <stop offset="100%" stop-color="${hex(GLOW)}" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.16"/>
-      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.04"/>
-    </linearGradient>
-    <linearGradient id="bell" gradientUnits="userSpaceOnUse" x1="0" y1="${originY}" x2="0" y2="${originY + bellHeight}">${stops}</linearGradient>
+    <linearGradient id="bell" gradientUnits="userSpaceOnUse" x1="0" y1="${n(originY)}" x2="0" y2="${n(originY + bellHeight)}">${stops}</linearGradient>
   </defs>
-  <rect width="${SIZE}" height="${SIZE}" rx="${RADIUS}" fill="url(#tile)"/>
-  <rect width="${SIZE}" height="${SIZE}" rx="${RADIUS}" fill="url(#glow)"/>
-  <rect x="1" y="1" width="${SIZE - 2}" height="${SIZE - 2}" rx="${RADIUS - 1}" fill="none" stroke="url(#rim)" stroke-width="2"/>
   <path fill="url(#bell)" stroke="url(#bell)" stroke-width="${STROKE}" stroke-linejoin="round" d="${path}"/>
 </svg>
 `;
@@ -247,10 +245,6 @@ function coverage(rects, radius = 0) {
 }
 
 function renderPng() {
-  const tile = coverage([[0, 0, SIZE, SIZE]], RADIUS);
-  const rimOuter = coverage([[1, 1, SIZE - 2, SIZE - 2]], RADIUS - 1);
-  const rimInner = coverage([[3, 3, SIZE - 6, SIZE - 6]], RADIUS - 3);
-
   // Same two-pass shape as the SVG's fill-plus-round-join stroke.
   const inner = coverage(
     cells.map(([x, y, width, height]) => [x + 1, y + 1, width - 2, height - 2]),
@@ -265,30 +259,17 @@ function renderPng() {
     raw[at] = 0; // filter: none — the image is flat colour, so filtering buys nothing
     at += 1;
 
-    const fy = (py + 0.5) / SIZE;
-    const tileRgb = TILE_TOP.map((c, i) => c + (TILE_BOTTOM[i] - c) * fy);
-    const bellRgb = bellColor((py + 0.5 - originY) / bellHeight);
-    const rimAlpha = 0.16 + (0.04 - 0.16) * fy;
+    const rgb = bellColor((py + 0.5 - originY) / bellHeight);
 
     for (let px = 0; px < SIZE; px += 1) {
-      const i = py * SIZE + px;
-      const alpha = tile[i];
+      const alpha = bell[py * SIZE + px];
       if (alpha <= 0) {
         at += 4;
         continue;
       }
-
-      const dx = (px + 0.5) / SIZE - 0.5;
-      const dy = fy - 0.16;
-      const glow = Math.max(0, 1 - Math.hypot(dx, dy) / 0.76) * 0.22;
-      const rim = Math.max(0, rimOuter[i] - rimInner[i]) * rimAlpha;
-
-      for (let c = 0; c < 3; c += 1) {
-        let value = tileRgb[c] + (GLOW[c] - tileRgb[c]) * glow;
-        value += (255 - value) * rim;
-        value += (bellRgb[c] - value) * bell[i];
-        raw[at + c] = Math.round(value);
-      }
+      // Straight alpha, so an edge pixel keeps the full colour and only thins.
+      // Premultiplying here would darken every edge against a light README.
+      for (let c = 0; c < 3; c += 1) raw[at + c] = Math.round(rgb[c]);
       raw[at + 3] = Math.round(alpha * 255);
       at += 4;
     }
